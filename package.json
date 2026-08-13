@@ -1,0 +1,13 @@
+{
+  "name": "family-menu-mini-program",
+  "version": "1.0.0",
+  "private": true,
+  "description": "一个厨师与多名食客使用的家庭点餐微信小程序",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/check-project.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

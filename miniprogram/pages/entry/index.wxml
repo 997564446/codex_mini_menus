@@ -1,0 +1,82 @@
+<view class="entry-page">
+  <view class="family-scene">
+    <view class="sun">☀️</view>
+    <view class="house">🏡</view>
+    <view class="family">👨‍👩‍👧‍👦</view>
+  </view>
+  <view class="brand">
+    <text class="brand-title">咱家开饭</text>
+    <text class="brand-copy">今天想吃什么，先跟家里的大厨说一声</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="card empty-state">
+    <text class="empty-emoji">🥣</text>
+    <text class="empty-copy">正在看看厨房准备好了没有…</text>
+  </view>
+
+  <view wx:elif="{{session.previewMode}}" class="card empty-state">
+    <text class="empty-emoji">👀</text>
+    <text class="empty-title">游客模式预览成功</text>
+    <text class="empty-copy">页面已经通过微信开发者工具编译。换成正式或测试 AppID，并配置云开发环境后，就能验收厨师和食客的完整流程。</text>
+  </view>
+
+  <view wx:elif="{{!session.configurationReady}}" class="card empty-state">
+    <text class="empty-emoji">🧰</text>
+    <text class="empty-title">还差一步部署配置</text>
+    <text class="empty-copy">请先在云数据库创建 system_config/global 初始化记录，再回来认领厨师。</text>
+    <button class="ghost-btn" bindtap="loadSession">我已配置，重新检查</button>
+  </view>
+
+  <view wx:elif="{{session.user && session.user.status === 'pending'}}" class="card empty-state">
+    <text class="empty-emoji">⏳</text>
+    <text class="empty-title">厨师正在看你的申请</text>
+    <text class="empty-copy">通过后就能看到家里的菜单。可以先去提醒一下大厨。</text>
+    <button class="ghost-btn" bindtap="loadSession">刷新审批结果</button>
+  </view>
+
+  <view wx:elif="{{session.user && session.user.status === 'suspended'}}" class="card empty-state">
+    <text class="empty-emoji">🔒</text>
+    <text class="empty-title">你的点餐权限暂停了</text>
+    <text class="empty-copy">请直接联系家里的厨师恢复成员状态。</text>
+    <button class="ghost-btn" bindtap="loadSession">刷新状态</button>
+  </view>
+
+  <view wx:else class="form-card card">
+    <view wx:if="{{mode === 'claim'}}">
+      <text class="form-title">👩‍🍳 认领家庭厨师</text>
+      <text class="form-copy">一个家庭只能认领一次，成功后口令立即失效。</text>
+      <view class="field">
+        <text class="field-label">家庭名称</text>
+        <input class="input" value="{{familyName}}" data-field="familyName" bindinput="onInput" maxlength="24" placeholder="例如：小林家的饭桌" />
+      </view>
+      <view class="field">
+        <text class="field-label">大家怎么称呼你</text>
+        <input class="input" value="{{displayName}}" data-field="displayName" bindinput="onInput" maxlength="16" placeholder="例如：林妈妈" />
+      </view>
+      <view class="field">
+        <text class="field-label">一次性初始化口令</text>
+        <input class="input" password value="{{passphrase}}" data-field="passphrase" bindinput="onInput" maxlength="128" placeholder="部署时设置的口令" />
+      </view>
+      <button class="primary-btn" bindtap="claimChef">开张，成为厨师</button>
+    </view>
+
+    <view wx:else>
+      <text class="form-title">🙋 申请加入饭桌</text>
+      <text class="form-copy">填好后需要厨师同意，陌生人看不到家庭菜单。</text>
+      <view class="field">
+        <text class="field-label">家庭邀请码</text>
+        <input class="input code-input" value="{{inviteCode}}" data-field="inviteCode" bindinput="onInput" maxlength="16" placeholder="8 位邀请码" />
+      </view>
+      <view class="field">
+        <text class="field-label">家中称呼</text>
+        <input class="input" value="{{displayName}}" data-field="displayName" bindinput="onInput" maxlength="16" placeholder="例如：小满" />
+      </view>
+      <view class="field">
+        <text class="field-label">家庭关系（选填）</text>
+        <input class="input" value="{{relation}}" data-field="relation" bindinput="onInput" maxlength="12" placeholder="例如：女儿、爷爷" />
+      </view>
+      <button class="primary-btn" bindtap="applyJoin">提交给厨师审批</button>
+      <text wx:if="{{session.user && session.user.status === 'rejected'}}" class="rejected-tip">上次申请未通过，确认新邀请码后可以再次申请。</text>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,13 @@
+.entry-page { min-height: 100vh; padding: 44rpx 34rpx 80rpx; background: linear-gradient(180deg, #fff3cf 0, #fff9ef 40%); }
+.family-scene { position: relative; height: 230rpx; overflow: hidden; border-radius: 42rpx; background: linear-gradient(180deg, #aee1f5, #dff1cf); }
+.sun { position: absolute; top: 20rpx; right: 34rpx; font-size: 58rpx; }
+.house { position: absolute; right: 0; bottom: -12rpx; left: 0; text-align: center; font-size: 152rpx; }
+.family { position: absolute; right: 62rpx; bottom: 18rpx; font-size: 66rpx; }
+.brand { padding: 32rpx 8rpx; text-align: center; }
+.brand-title { display: block; font-size: 52rpx; font-weight: 800; letter-spacing: 4rpx; }
+.brand-copy { display: block; margin-top: 12rpx; color: #7d6d5e; font-size: 27rpx; }
+.form-card { padding: 38rpx 32rpx; }
+.form-title { display: block; font-size: 38rpx; font-weight: 800; }
+.form-copy { display: block; margin: 12rpx 0 34rpx; color: #8a7d70; font-size: 25rpx; line-height: 1.6; }
+.code-input { text-transform: uppercase; letter-spacing: 7rpx; font-weight: 700; }
+.rejected-tip { display: block; margin-top: 24rpx; color: #d26b52; text-align: center; font-size: 24rpx; }

@@ -1,0 +1,71 @@
+<view class="page">
+  <view wx:if="{{role === 'chef'}}">
+    <view class="top-title">
+      <view><text class="page-title">家里的菜单</text><text class="page-copy">先建菜品，再安排到具体的一餐</text></view>
+      <text class="top-emoji">📖</text>
+    </view>
+    <view class="segment card">
+      <view class="segment-item {{chefTab === 'dishes' ? 'active' : ''}}" data-tab="dishes" bindtap="switchChefTab">菜品库</view>
+      <view class="segment-item {{chefTab === 'meals' ? 'active' : ''}}" data-tab="meals" bindtap="switchChefTab">餐次菜单</view>
+    </view>
+
+    <view wx:if="{{chefTab === 'dishes'}}">
+      <view class="toolbar">
+        <button class="toolbar-btn ghost" bindtap="addCategory">＋ 分类</button>
+        <button class="toolbar-btn primary" bindtap="editDish">＋ 新菜</button>
+      </view>
+      <scroll-view wx:if="{{categories.length}}" class="category-strip" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="category-row"><view wx:for="{{categories}}" wx:key="_id" class="category-pill {{item.isDefault ? 'default' : ''}}" data-id="{{item._id}}" bindtap="manageCategory"><text>{{item.name}}</text><text wx:if="{{!item.isDefault}}" class="category-more">···</text></view></view>
+      </scroll-view>
+      <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在整理菜品库…</text></view>
+      <view wx:elif="{{!dishes.length}}" class="card empty-state">
+        <text class="empty-emoji">🥬</text><text class="empty-title">菜品库还是空的</text><text class="empty-copy">先新增一个分类，再录入家里的拿手菜。</text>
+      </view>
+      <block wx:else>
+      <view wx:for="{{dishes}}" wx:key="_id" class="dish-row card">
+        <image wx:if="{{item.imageFileId}}" class="dish-image" src="{{item.imageFileId}}" mode="aspectFill" />
+        <view wx:else class="dish-image placeholder">🥗</view>
+        <view class="dish-body" data-id="{{item._id}}" bindtap="editDish">
+          <view><text class="dish-name">{{item.name}}</text><text class="state {{item.enabled ? 'on' : ''}}">{{item.enabled ? '上架' : '下架'}}</text></view>
+          <text class="dish-meta">{{item.categoryName}} · {{item.specs.length}} 组规格</text>
+          <text class="price">¥{{item.priceText}}</text>
+        </view>
+        <switch color="#55a66f" checked="{{item.enabled}}" data-id="{{item._id}}" data-enabled="{{item.enabled}}" bindchange="toggleDish" />
+      </view>
+      </block>
+    </view>
+
+    <view wx:else>
+      <view class="toolbar right"><button class="toolbar-btn primary" bindtap="editMeal">＋ 安排一餐</button></view>
+      <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在查看近期安排…</text></view>
+      <view wx:elif="{{!meals.length}}" class="card empty-state">
+        <text class="empty-emoji">🗓️</text><text class="empty-title">未来一个月还没排餐</text><text class="empty-copy">从菜品库选择几道菜，组成早餐、午餐或晚餐。</text>
+      </view>
+      <block wx:else>
+      <view wx:for="{{meals}}" wx:key="_id" class="meal-row card">
+        <view class="meal-icon">{{item.mealType === 'breakfast' ? '🥛' : item.mealType === 'lunch' ? '🍱' : '🍲'}}</view>
+        <view class="meal-body" data-id="{{item._id}}" bindtap="editMeal">
+          <text class="meal-title">{{item.date}} · {{item.mealLabel}}</text>
+          <text class="meal-meta">{{item.dishIds.length}} 道菜 · {{item.status === 'open' ? '正在点餐' : item.status === 'closed' ? '已关闭' : '草稿'}}</text>
+        </view>
+        <button class="meal-toggle {{item.status === 'open' ? 'close' : ''}}" data-id="{{item._id}}" data-status="{{item.status}}" bindtap="toggleMeal">{{item.status === 'open' ? '关单' : '开放'}}</button>
+      </view>
+      </block>
+    </view>
+  </view>
+
+  <view wx:else>
+    <view class="top-title"><view><text class="page-title">我的订单</text><text class="page-copy">每顿饭的进度，都在这里</text></view><text class="top-emoji">🧾</text></view>
+    <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在找你的订单…</text></view>
+    <view wx:elif="{{!orders.length}}" class="card empty-state">
+      <text class="empty-emoji">🍚</text><text class="empty-title">还没有点过餐</text><text class="empty-copy">到“点餐”看看大厨今天准备了什么。</text>
+    </view>
+    <block wx:else>
+    <view wx:for="{{orders}}" wx:key="_id" class="order-card card" data-id="{{item._id}}" bindtap="openOrder">
+      <view class="order-head"><text class="order-meal">{{item.mealDate}} · {{item.mealLabel}}</text><text class="order-state state-{{item.status}}">{{item.statusLabel}}</text></view>
+      <text class="order-dishes">{{item.items[0].name}}{{item.items.length > 1 ? ' 等 ' + item.items.length + ' 道菜' : ''}}</text>
+      <view class="order-foot"><text class="muted">订单参考金额</text><text class="price">¥{{item.totalText}} ›</text></view>
+    </view>
+    </block>
+  </view>
+</view>

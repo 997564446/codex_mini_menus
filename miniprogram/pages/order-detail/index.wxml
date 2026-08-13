@@ -1,0 +1,33 @@
+<view class="detail-page">
+  <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在查看订单…</text></view>
+  <block wx:else>
+    <view class="status-card card status-{{order.status}}">
+      <text class="status-emoji">{{order.status === 'pending' ? '⏳' : order.status === 'confirmed' ? '👌' : order.status === 'cooking' ? '🔥' : order.status === 'ready' ? '🔔' : order.status === 'completed' ? '😋' : '🚫'}}</text>
+      <view><text class="status-title">{{order.statusLabel}}</text><text class="status-copy">{{order.mealDate}} · {{order.mealLabel}}{{role === 'chef' ? ' · ' + order.dinerName : ''}}</text></view>
+    </view>
+
+    <view class="section-title"><text>点餐内容</text></view>
+    <view class="items-card card">
+      <view wx:for="{{order.items}}" wx:key="dishId" class="item-row">
+        <image wx:if="{{item.imageFileId}}" class="item-image" src="{{item.imageFileId}}" mode="aspectFill" />
+        <view wx:else class="item-image placeholder">🥘</view>
+        <view class="item-body"><text class="item-name">{{item.name}} × {{item.quantity}}</text><text wx:if="{{item.specText}}" class="item-spec">{{item.specText}}</text><text wx:if="{{item.note}}" class="item-note">备注：{{item.note}}</text></view>
+        <text class="item-price">¥{{item.subtotalText}}</text>
+      </view>
+      <view class="total-row"><text>参考总额（无需支付）</text><text class="total-price">¥{{order.totalText}}</text></view>
+    </view>
+
+    <view wx:if="{{order.note}}" class="section-title"><text>整单备注</text></view>
+    <view wx:if="{{order.note}}" class="remark card">📝 {{order.note}}</view>
+    <view wx:if="{{order.cancelReason}}" class="cancel-reason card">取消原因：{{order.cancelReason}}</view>
+
+    <view wx:if="{{role === 'diner' && order.status === 'pending'}}" class="action-row">
+      <button class="danger-btn" bindtap="cancelMine">取消订单</button>
+      <button class="primary-btn" bindtap="editOrder">修改订单</button>
+    </view>
+    <view wx:elif="{{role === 'chef' && nextStatus}}" class="action-row">
+      <button class="danger-btn" bindtap="chefCancel">取消订单</button>
+      <button class="secondary-btn" bindtap="moveNext">{{nextLabel}}</button>
+    </view>
+  </block>
+</view>

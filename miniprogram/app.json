@@ -1,0 +1,34 @@
+{
+  "pages": [
+    "pages/entry/index",
+    "pages/home/index",
+    "pages/manage/index",
+    "pages/account/index",
+    "pages/dish-edit/index",
+    "pages/meal-edit/index",
+    "pages/order-edit/index",
+    "pages/order-detail/index"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#fff9ef",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "咱家开饭",
+    "backgroundColor": "#fff9ef",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#8a7d70",
+    "selectedColor": "#ef6a4c",
+    "backgroundColor": "#ffffff",
+    "list": [
+      { "pagePath": "pages/home/index", "text": "点餐" },
+      { "pagePath": "pages/manage/index", "text": "订单" },
+      { "pagePath": "pages/account/index", "text": "我的" }
+    ]
+  },
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json",
+  "__usePrivacyCheck__": true
+}

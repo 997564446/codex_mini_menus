@@ -1,0 +1,50 @@
+<view class="page">
+  <view class="profile-card card">
+    <view class="avatar">{{role === 'chef' ? '👩‍🍳' : '😋'}}</view>
+    <view class="profile-body"><text class="profile-name">{{session.user.displayName}}</text><text class="profile-meta">{{session.user.relation || (role === 'chef' ? '家庭厨师' : '家庭食客')}} · {{session.family.name}}</text></view>
+    <button class="edit-btn" bindtap="editProfile">编辑</button>
+  </view>
+
+  <view wx:if="{{role === 'chef'}}">
+    <view class="section-title"><text>邀请家人</text></view>
+    <view class="invite-card card">
+      <text class="invite-copy">邀请码只在生成后展示一次，刷新邀请码会让旧码失效。</text>
+      <view wx:if="{{inviteCode}}" class="invite-code" bindtap="copyInvite">{{inviteCode}}</view>
+      <view class="invite-actions">
+        <button class="invite-action main" bindtap="refreshInvite">{{inviteCode ? '刷新邀请码' : '生成邀请码'}}</button>
+        <button class="invite-action" bindtap="createInviteQr">生成小程序码</button>
+        <button class="invite-action" open-type="share" disabled="{{!inviteCode}}">分享</button>
+      </view>
+      <view wx:if="{{inviteQr}}" class="qr-box">
+        <image class="qr-image" src="{{inviteQr}}" mode="aspectFit" show-menu-by-longpress />
+        <button class="ghost-btn" bindtap="saveInviteQr">保存到相册</button>
+      </view>
+    </view>
+
+    <view class="section-title"><text>待审批</text><text class="section-count">{{overview.applications.length || 0}}</text></view>
+    <view wx:if="{{!overview.applications.length}}" class="card small-empty">现在没有人等审批</view>
+    <view wx:for="{{overview.applications}}" wx:key="_id" class="member-row card">
+      <view class="member-avatar">🙋</view><view class="member-body"><text class="member-name">{{item.displayName}}</text><text class="member-meta">{{item.relation || '未填写关系'}}</text></view>
+      <button class="round-btn reject" data-id="{{item._id}}" data-decision="reject" bindtap="review">拒绝</button>
+      <button class="round-btn approve" data-id="{{item._id}}" data-decision="approve" bindtap="review">同意</button>
+    </view>
+
+    <view class="section-title"><text>家庭成员</text><text class="section-count">{{overview.members.length || 0}}</text></view>
+    <view wx:for="{{overview.members}}" wx:key="_id" class="member-row card">
+      <view class="member-avatar">🙂</view><view class="member-body"><text class="member-name">{{item.displayName}}</text><text class="member-meta">{{item.relation || '家庭食客'}} · {{item.status === 'active' ? '可点餐' : '已暂停'}}</text></view>
+      <button class="round-btn {{item.status === 'active' ? 'reject' : 'approve'}}" data-id="{{item._id}}" data-status="{{item.status}}" bindtap="toggleMember">{{item.status === 'active' ? '暂停' : '恢复'}}</button>
+    </view>
+
+    <view class="section-title"><text>微信提醒</text></view>
+    <view class="notice-setting card">
+      <view><text class="setting-title">新订单订阅消息</text><text class="setting-copy">微信采用一次性授权，用完后可以再次开启。</text></view>
+      <button class="round-btn approve" bindtap="subscribeChef">{{session.user.chefSubscribeEnabled ? '已授权' : '开启'}}</button>
+    </view>
+  </view>
+
+  <view class="section-title"><text>站内消息</text><text wx:if="{{unreadCount}}" class="read-all" bindtap="readAll">全部已读</text></view>
+  <view wx:if="{{!notifications.length}}" class="card small-empty">暂无新消息，安心等开饭吧</view>
+  <view wx:for="{{notifications}}" wx:key="_id" class="notification card {{item.read ? '' : 'unread'}}">
+    <view class="notification-dot"></view><view><text class="notification-title">{{item.title}}</text><text class="notification-copy">{{item.content}}</text></view>
+  </view>
+</view>

@@ -1,0 +1,35 @@
+.hero { position: relative; display: flex; min-height: 218rpx; padding: 34rpx; overflow: hidden; background: linear-gradient(135deg, #ffad69, #ef6a4c); color: #fff; }
+.chef-hero { background: linear-gradient(135deg, #68b983, #3e9061); }
+.eyebrow { display: block; margin-bottom: 12rpx; font-size: 24rpx; font-weight: 700; opacity: .86; }
+.hero-title { display: block; font-size: 40rpx; font-weight: 800; }
+.hero-copy { display: block; width: 440rpx; margin-top: 16rpx; font-size: 25rpx; line-height: 1.5; opacity: .88; }
+.hero-emoji { position: absolute; right: 28rpx; bottom: 18rpx; font-size: 112rpx; transform: rotate(-4deg); }
+.date-strip { width: calc(100% + 28rpx); margin: 28rpx -14rpx 26rpx; white-space: nowrap; }
+.date-row { display: inline-flex; gap: 14rpx; padding: 0 14rpx; }
+.date-chip { display: flex; width: 112rpx; height: 112rpx; flex-direction: column; align-items: center; justify-content: center; border-radius: 24rpx; background: #fff; color: #807265; box-shadow: 0 6rpx 18rpx rgba(89,65,43,.06); }
+.date-chip.selected { background: #332c27; color: #fff; }
+.date-day { font-size: 25rpx; font-weight: 700; }
+.date-short { margin-top: 7rpx; font-size: 21rpx; opacity: .75; }
+.meal-card, .kitchen-card { margin-bottom: 26rpx; padding: 30rpx; }
+.meal-head { display: flex; align-items: center; justify-content: space-between; }
+.meal-title { display: block; font-size: 36rpx; font-weight: 800; }
+.meal-date { display: block; margin-top: 7rpx; color: #8a7d70; font-size: 23rpx; }
+.dish-preview { width: calc(100% + 30rpx); margin: 26rpx -15rpx 20rpx; white-space: nowrap; }
+.dish-preview-row { display: inline-flex; gap: 18rpx; padding: 0 15rpx; }
+.preview-item { width: 190rpx; }
+.preview-image { display: flex; width: 190rpx; height: 146rpx; align-items: center; justify-content: center; border-radius: 20rpx; background: #fff1dc; font-size: 58rpx; }
+.preview-name { display: block; margin-top: 10rpx; overflow: hidden; font-size: 27rpx; font-weight: 700; text-overflow: ellipsis; }
+.preview-price { display: block; margin-top: 4rpx; color: #ef6a4c; font-size: 24rpx; }
+.meal-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 20rpx; border-top: 2rpx dashed #eee4d9; font-size: 25rpx; }
+.go-order { color: #ef6a4c; font-weight: 700; }
+.count-bubble { display: flex; width: 86rpx; height: 86rpx; align-items: baseline; justify-content: center; border-radius: 50%; background: #eaf7ee; color: #3b8e5a; font-size: 38rpx; font-weight: 800; line-height: 86rpx; }
+.count-unit { margin-left: 4rpx; font-size: 19rpx; }
+.stats-row { display: flex; margin: 26rpx 0; padding: 22rpx 0; border-radius: 20rpx; background: #fbf7f1; }
+.stat { display: flex; flex: 1; flex-direction: column; align-items: center; border-right: 2rpx solid #eee4d9; }
+.stat:last-child { border: 0; }
+.stat-number { font-size: 36rpx; font-weight: 800; }.stat-number.orange{color:#ef6a4c}.stat-label{margin-top:5rpx;color:#8a7d70;font-size:21rpx}
+.summary-box { padding: 20rpx 22rpx; border-radius: 18rpx; background: #fff8e5; }
+.summary-line { display: flex; justify-content: space-between; padding: 8rpx 0; font-size: 25rpx; }.summary-spec{color:#8a7d70;font-size:22rpx}.summary-qty{font-weight:700}
+.note-box { margin-top: 18rpx; padding: 20rpx 22rpx; border-radius: 18rpx; background: #fff0e9; }.note-title{display:block;margin-bottom:8rpx;font-weight:700}.note-line{display:block;padding:4rpx 0;color:#725d51;font-size:24rpx}
+.order-list { margin-top: 20rpx; }.order-row{display:flex;align-items:center;justify-content:space-between;padding:20rpx 0;border-bottom:2rpx solid #f3ece5;font-size:25rpx}.order-name{margin-right:12rpx;font-weight:700}.order-status{padding:5rpx 10rpx;border-radius:10rpx;background:#fff0e9;color:#ef6a4c;font-size:20rpx}.status-ready{background:#eaf7ee;color:#3b8e5a}.status-cancelled{background:#eee;color:#888}
+.batch-actions { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 24rpx; }.mini-action{margin:0;border:0;border-radius:14rpx;background:#fff0e9;color:#d75d42;font-size:21rpx}.mini-action::after{border:0}.mini-action.green{background:#eaf7ee;color:#3b8e5a}.mini-action.plain{background:#f1eee9;color:#6e645b}.mini-action.confirm{background:#fff4c9;color:#8b6d10}

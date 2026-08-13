@@ -1,0 +1,108 @@
+page {
+  min-height: 100%;
+  background: #fff9ef;
+  color: #332c27;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  --orange: #ef6a4c;
+  --orange-soft: #fff0e9;
+  --green: #55a66f;
+  --green-soft: #eaf7ee;
+  --yellow: #f6c453;
+  --cream: #fff9ef;
+  --ink: #332c27;
+  --muted: #8a7d70;
+}
+
+view, text, image, button, input, textarea, picker, scroll-view {
+  box-sizing: border-box;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 28rpx 28rpx calc(150rpx + env(safe-area-inset-bottom));
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 28rpx;
+  box-shadow: 0 10rpx 30rpx rgba(89, 65, 43, 0.08);
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 34rpx 4rpx 20rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.muted { color: var(--muted); }
+.price { color: var(--orange); font-weight: 700; }
+
+.primary-btn,
+.secondary-btn,
+.danger-btn,
+.ghost-btn {
+  min-height: 84rpx;
+  margin: 0;
+  border: 0;
+  border-radius: 22rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 84rpx;
+}
+
+.primary-btn { background: var(--orange); color: #fff; }
+.secondary-btn { background: var(--green); color: #fff; }
+.danger-btn { background: #fff0ee; color: #d94e3e; }
+.ghost-btn { background: #f5efe7; color: #66594e; }
+.primary-btn::after, .secondary-btn::after, .danger-btn::after, .ghost-btn::after { border: 0; }
+button[disabled] { opacity: 0.48; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: var(--orange-soft);
+  color: var(--orange);
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.field {
+  margin-bottom: 24rpx;
+}
+
+.field-label {
+  display: block;
+  margin: 0 0 12rpx 4rpx;
+  color: #61564c;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.input, .textarea, .picker-field {
+  width: 100%;
+  min-height: 88rpx;
+  padding: 22rpx 24rpx;
+  border: 2rpx solid #efe6dc;
+  border-radius: 20rpx;
+  background: #fff;
+  font-size: 29rpx;
+}
+
+.textarea { min-height: 150rpx; }
+
+.empty-state {
+  padding: 80rpx 36rpx;
+  text-align: center;
+}
+
+.empty-emoji { display: block; margin-bottom: 18rpx; font-size: 88rpx; }
+.empty-title { display: block; font-size: 32rpx; font-weight: 700; }
+.empty-copy { display: block; margin: 12rpx 0 30rpx; color: var(--muted); font-size: 26rpx; line-height: 1.6; }
+
+.safe-bottom { height: calc(28rpx + env(safe-area-inset-bottom)); }

@@ -1,0 +1,28 @@
+<view class="edit-page">
+  <view class="photo-card card" bindtap="chooseImage">
+    <image wx:if="{{imageFileId}}" class="photo" src="{{imageFileId}}" mode="aspectFill" />
+    <view wx:else class="photo-empty"><text class="photo-emoji">📷</text><text>拍一张好吃的照片</text></view>
+    <text class="photo-action">更换图片</text>
+  </view>
+
+  <view class="form-card card">
+    <view class="field"><text class="field-label">菜名</text><input class="input" value="{{name}}" data-field="name" bindinput="onInput" maxlength="30" placeholder="例如：番茄炒蛋" /></view>
+    <view class="field"><text class="field-label">分类</text><picker range="{{categories}}" range-key="name" value="{{categoryIndex}}" bindchange="onCategoryChange"><view class="picker-field">{{categories[categoryIndex].name || '请先在菜品库新增分类'}} <text>⌄</text></view></picker></view>
+    <view class="field"><text class="field-label">参考价格（不支付）</text><input class="input" type="digit" value="{{priceYuan}}" data-field="priceYuan" bindinput="onInput" placeholder="0.00" /></view>
+    <view class="field"><text class="field-label">介绍</text><textarea class="textarea" value="{{description}}" data-field="description" bindinput="onInput" maxlength="200" placeholder="说说味道和主要食材" /></view>
+  </view>
+
+  <view class="section-title"><text>菜品规格</text><text class="add-link" bindtap="addSpec">＋ 添加</text></view>
+  <view wx:if="{{!specs.length}}" class="card spec-empty">不需要选口味或配料，可以不添加规格。</view>
+  <view wx:for="{{specs}}" wx:key="index" class="spec-card card">
+    <view class="spec-head"><text>规格 {{index + 1}}</text><text class="delete" data-index="{{index}}" bindtap="removeSpec">删除</text></view>
+    <input class="input" value="{{item.name}}" data-index="{{index}}" data-field="name" bindinput="onSpecInput" maxlength="12" placeholder="规格名，例如：辣度" />
+    <radio-group class="type-row" data-index="{{index}}" bindchange="onSpecType">
+      <label><radio color="#ef6a4c" value="single" checked="{{item.type === 'single'}}" /> 单选</label>
+      <label><radio color="#ef6a4c" value="multiple" checked="{{item.type === 'multiple'}}" /> 多选</label>
+      <label class="required-label"><switch color="#55a66f" checked="{{item.required}}" data-index="{{index}}" bindchange="onSpecRequired" /> 必选</label>
+    </radio-group>
+    <textarea class="textarea option-area" value="{{item.optionText}}" data-index="{{index}}" data-field="optionText" bindinput="onSpecInput" placeholder="选项用逗号分开，例如：不辣，微辣，中辣" />
+  </view>
+  <button class="primary-btn save-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存菜品</button>
+</view>

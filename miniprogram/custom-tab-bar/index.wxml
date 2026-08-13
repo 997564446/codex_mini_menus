@@ -1,0 +1,12 @@
+<view class="tab-shell">
+  <view
+    wx:for="{{role === 'chef' ? chefTabs : dinerTabs}}"
+    wx:key="pagePath"
+    class="tab-item {{selected === index ? 'active' : ''}}"
+    data-index="{{index}}"
+    bindtap="switchTab"
+  >
+    <text class="tab-icon">{{item.icon}}</text>
+    <text class="tab-text">{{item.text}}</text>
+  </view>
+</view>

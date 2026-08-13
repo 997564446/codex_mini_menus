@@ -1,0 +1,19 @@
+<view class="edit-page">
+  <view class="meal-hero card"><text class="meal-hero-emoji">🗓️</text><view><text class="meal-hero-title">安排家里的一顿饭</text><text class="meal-hero-copy">保存后回到菜单页手动开放点餐</text></view></view>
+  <view class="form-card card">
+    <view class="field"><text class="field-label">用餐日期</text><picker mode="date" value="{{date}}" bindchange="onDate"><view class="picker-field">{{date}} <text>⌄</text></view></picker></view>
+    <view class="field"><text class="field-label">餐次</text><view class="meal-types"><view wx:for="{{mealTypes}}" wx:key="value" class="meal-type {{mealType === item.value ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="selectMealType"><text class="meal-type-emoji">{{item.emoji}}</text><text>{{item.label}}</text></view></view></view>
+  </view>
+
+  <view class="section-title"><text>选择菜品</text><text class="selected-count">已选 {{selectedDishIds.length}}</text></view>
+  <view wx:if="{{!dishes.length}}" class="card empty-state"><text class="empty-emoji">🥕</text><text class="empty-title">没有可用菜品</text><text class="empty-copy">请先在菜品库新增并上架菜品。</text></view>
+  <checkbox-group wx:else bindchange="onDishes">
+    <label wx:for="{{dishes}}" wx:key="_id" class="dish-choice card">
+      <image wx:if="{{item.imageFileId}}" class="dish-image" src="{{item.imageFileId}}" mode="aspectFill" />
+      <view wx:else class="dish-image placeholder">🥘</view>
+      <view class="dish-body"><text class="dish-name">{{item.name}}</text><text class="dish-copy">{{item.description || '家里的拿手味道'}}</text></view>
+      <checkbox value="{{item._id}}" checked="{{item.checked}}" color="#55a66f" />
+    </label>
+  </checkbox-group>
+  <button class="primary-btn save-btn" loading="{{saving}}" disabled="{{saving || !dishes.length}}" bindtap="save">保存餐次</button>
+</view>
