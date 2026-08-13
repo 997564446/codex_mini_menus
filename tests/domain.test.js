@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { hashSecret, safeEqual } = require('../cloudfunctions/identity/domain')
-const { normalizeDishSettings, assertWeeklyMenu } = require('../cloudfunctions/menu/domain')
+const { normalizeDishSettings, normalizeDishSelection, assertWeeklyMenu } = require('../cloudfunctions/menu/domain')
 const presetDishes = require('../cloudfunctions/menu/preset-dishes')
 const { assertTransition, validateSelectedSpecs, normalizeItems, inventoryDeltas } = require('../cloudfunctions/order/domain')
 
@@ -32,6 +32,13 @@ test('菜品库存支持有限数量和无限模式', () => {
   assert.deepEqual(normalizeDishSettings({ categoryId: 'c1', stockUnlimited: true, stock: -1 }), { categoryId: 'c1', stockUnlimited: true, stock: 0 })
   assert.throws(() => normalizeDishSettings({ categoryId: 'c1', stock: -1 }), /分类和库存/)
   assert.throws(() => normalizeDishSettings({ categoryId: '', stock: 1 }), /分类和库存/)
+})
+
+test('批量归类拒绝重复、空标识和超量菜品', () => {
+  assert.deepEqual(normalizeDishSelection(['d1', 'd2']), ['d1', 'd2'])
+  assert.throws(() => normalizeDishSelection(['d1', 'd1']), /重复菜品/)
+  assert.throws(() => normalizeDishSelection(['']), /无效/)
+  assert.throws(() => normalizeDishSelection(Array.from({ length: 101 }, (_, index) => `d${index}`)), /数量不正确/)
 })
 
 test('星期菜单只接受周一至周日且不硬编码具体菜品', () => {

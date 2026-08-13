@@ -36,6 +36,7 @@
 | `chefCatalog` | 无 | 厨师 | 分类和菜品库 |
 | `saveCategory` | 分类名称与可选 ID | 厨师 | 新建或修改分类 |
 | `deleteCategory` | `categoryId` | 厨师 | 删除分类并将菜品移入“未分类” |
+| `batchSetCategory` | `categoryId`、`dishIds`、`versions` | 厨师 | 批量归类，移出的菜品回到“未分类” |
 | `saveDish` | `dishId`、分类、库存、版本号 | 厨师 | 修改预置菜品的分类和库存 |
 | `chefMeals` | 无 | 厨师 | 查询周一至周日固定菜单 |
 | `saveMeal` | `mealMenuId`、菜品和版本号 | 厨师 | 保存指定星期菜单 |

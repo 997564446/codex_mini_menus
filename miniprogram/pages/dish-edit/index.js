@@ -40,8 +40,8 @@ Page({
   /** 选择菜品分类。 */
   onCategoryChange(event) { this.setData({ categoryIndex: Number(event.detail.value) }) },
 
-  /** 设置库存是否无限。 */
-  onUnlimited(event) { this.setData({ stockUnlimited: event.detail.value }) },
+  /** 在有限库存和无限库存之间切换。 */
+  onStockMode(event) { this.setData({ stockUnlimited: event.detail.value === 'unlimited' }) },
 
   /** 修改有限库存数量。 */
   onStock(event) { this.setData({ stock: event.detail.value }) },

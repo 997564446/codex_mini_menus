@@ -9,6 +9,13 @@ Page({
     chefTab: 'dishes',
     categories: [],
     dishes: [],
+    selectedCategoryId: '',
+    selectedCategoryName: '',
+    selectedCategoryIsDefault: true,
+    categoryDishes: [],
+    selectedDishIds: [],
+    categoryDirty: false,
+    categorySaving: false,
     meals: [],
     orders: []
   },
@@ -27,7 +34,7 @@ Page({
   },
 
   /** 根据角色加载菜品、星期菜单或个人订单。 */
-  async loadData() {
+  async loadData(preferredCategoryId = '') {
     this.setData({ loading: true })
     try {
       if (this.data.role === 'chef') {
@@ -36,16 +43,25 @@ Page({
           api.call('menu', 'chefMeals')
         ])
         const categoryMap = Object.fromEntries(catalog.categories.map(category => [category._id, category.name]))
+        const dishes = catalog.dishes.map(dish => ({
+          ...dish,
+          categoryName: categoryMap[dish.categoryId] || '未分类',
+          stockText: dish.stockUnlimited ? '无限' : String(dish.stock || 0)
+        }))
+        const categories = catalog.categories.map(category => ({
+          ...category,
+          dishCount: dishes.filter(dish => dish.categoryId === category._id).length
+        }))
+        const selectedCategoryId = categories.some(category => category._id === (preferredCategoryId || this.data.selectedCategoryId))
+          ? preferredCategoryId || this.data.selectedCategoryId
+          : (categories.find(category => category.isDefault) || categories[0] || {})._id || ''
         this.setData({
-          categories: catalog.categories,
-          dishes: catalog.dishes.map(dish => ({
-            ...dish,
-            categoryName: categoryMap[dish.categoryId] || '未分类',
-            stockText: dish.stockUnlimited ? '无限' : String(dish.stock || 0)
-          })),
+          categories,
+          dishes,
           meals,
           loading: false
         })
+        this.showCategory(selectedCategoryId)
       } else {
         const orders = await api.call('order', 'myOrders')
         this.setData({
@@ -64,22 +80,100 @@ Page({
   },
 
   /** 切换厨师的菜品库与星期菜单。 */
-  switchChefTab(event) {
-    this.setData({ chefTab: event.currentTarget.dataset.tab })
+  async switchChefTab(event) {
+    const chefTab = event.currentTarget.dataset.tab
+    if (chefTab === this.data.chefTab) return
+    if (this.data.categoryDirty) {
+      const result = await wx.showModal({ title: '放弃未保存的归类？', content: '切换到星期菜单后，本次勾选不会保存。' })
+      if (!result.confirm) return
+    }
+    this.setData({ chefTab })
   },
 
   /** 新建菜品分类。 */
   async addCategory() {
+    if (this.data.categoryDirty) return wx.showToast({ title: '请先保存当前批量归类', icon: 'none' })
     const result = await wx.showModal({ title: '新增分类', editable: true, placeholderText: '例如：家常菜、汤羹' })
     if (!result.confirm || !result.content.trim()) return
     try {
-      await api.call('menu', 'saveCategory', { name: result.content })
-      await this.loadData()
+      const category = await api.call('menu', 'saveCategory', { name: result.content })
+      await this.loadData(category._id)
     } catch (error) { api.showError(error) }
+  },
+
+  /** 在左侧选择分类，并在右侧展示可批量归类的菜品。 */
+  async selectCategory(event) {
+    const categoryId = event.currentTarget.dataset.id
+    if (categoryId === this.data.selectedCategoryId) return
+    if (this.data.categoryDirty) {
+      const result = await wx.showModal({ title: '放弃未保存的归类？', content: '切换分类后，本次勾选不会保存。' })
+      if (!result.confirm) return
+    }
+    this.showCategory(categoryId)
+  },
+
+  /** 根据选中分类整理左右两列展示数据。 */
+  showCategory(categoryId) {
+    const category = this.data.categories.find(item => item._id === categoryId)
+    if (!category) return
+    const checkedIds = this.data.dishes.filter(dish => dish.categoryId === categoryId).map(dish => dish._id)
+    const checkedSet = new Set(checkedIds)
+    const categoryDishes = (category.isDefault
+      ? this.data.dishes.filter(dish => checkedSet.has(dish._id))
+      : [...this.data.dishes].sort((left, right) => Number(checkedSet.has(right._id)) - Number(checkedSet.has(left._id)) || (Number(left.sort) || 9999) - (Number(right.sort) || 9999))
+    ).map(dish => ({
+      ...dish,
+      checked: checkedSet.has(dish._id),
+      categoryDisplay: checkedSet.has(dish._id) ? category.name : dish.categoryName
+    }))
+    this.setData({
+      selectedCategoryId: categoryId,
+      selectedCategoryName: category.name,
+      selectedCategoryIsDefault: Boolean(category.isDefault),
+      categoryDishes,
+      selectedDishIds: checkedIds,
+      categoryDirty: false
+    })
+  },
+
+  /** 记录右侧批量勾选结果。 */
+  onCategoryDishes(event) {
+    const selectedDishIds = event.detail.value
+    const checkedSet = new Set(selectedDishIds)
+    this.setData({
+      selectedDishIds,
+      categoryDishes: this.data.categoryDishes.map(dish => {
+        const checked = checkedSet.has(dish._id)
+        return {
+          ...dish,
+          checked,
+          categoryDisplay: checked
+            ? this.data.selectedCategoryName
+            : dish.categoryId === this.data.selectedCategoryId ? '保存后移回未分类' : dish.categoryName
+        }
+      }),
+      categoryDirty: true
+    })
+  },
+
+  /** 保存当前分类中的全部勾选结果。 */
+  async saveCategoryDishes() {
+    if (this.data.selectedCategoryIsDefault || !this.data.categoryDirty) return
+    this.setData({ categorySaving: true })
+    try {
+      await api.call('menu', 'batchSetCategory', {
+        categoryId: this.data.selectedCategoryId,
+        dishIds: this.data.selectedDishIds,
+        versions: Object.fromEntries(this.data.dishes.map(dish => [dish._id, dish.version]))
+      })
+      wx.showToast({ title: '批量归类已保存', icon: 'success' })
+      await this.loadData(this.data.selectedCategoryId)
+    } catch (error) { api.showError(error) } finally { this.setData({ categorySaving: false }) }
   },
 
   /** 打开分类的修改或删除操作。 */
   async manageCategory(event) {
+    if (this.data.categoryDirty) return wx.showToast({ title: '请先保存当前批量归类', icon: 'none' })
     const category = this.data.categories.find(item => item._id === event.currentTarget.dataset.id)
     if (!category || category.isDefault) return
     try {
@@ -103,7 +197,7 @@ Page({
     if (!result.confirm || !name || name === category.name) return
     await api.call('menu', 'saveCategory', { categoryId: category._id, name })
     wx.showToast({ title: '分类已修改', icon: 'success' })
-    await this.loadData()
+    await this.loadData(category._id)
   },
 
   /** 删除分类并把其中的菜品移入“未分类”。 */
@@ -115,11 +209,13 @@ Page({
     if (!result.confirm) return
     await api.call('menu', 'deleteCategory', { categoryId: category._id })
     wx.showToast({ title: '分类已删除', icon: 'success' })
-    await this.loadData()
+    const defaultCategory = this.data.categories.find(item => item.isDefault)
+    await this.loadData(defaultCategory ? defaultCategory._id : '')
   },
 
   /** 打开预置菜品的分类与库存设置页。 */
   editDish(event) {
+    if (this.data.categoryDirty) return wx.showToast({ title: '请先保存当前批量归类', icon: 'none' })
     const id = event.currentTarget.dataset.id
     if (id) wx.navigateTo({ url: `/pages/dish-edit/index?id=${id}` })
   },

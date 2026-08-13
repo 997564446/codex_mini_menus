@@ -1,6 +1,6 @@
 const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
-const { WEEKDAY_LABELS, normalizeDishSettings, assertWeeklyMenu } = require('./domain')
+const { WEEKDAY_LABELS, normalizeDishSettings, normalizeDishSelection, assertWeeklyMenu } = require('./domain')
 const PRESET_DISHES = require('./preset-dishes')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
@@ -224,6 +224,73 @@ async function deleteCategory(openid, payload) {
 }
 
 /**
+ * 在事务中分批更新菜品分类，减少逐条写入造成的云函数超时风险。
+ * @param {object} transaction 数据库事务
+ * @param {string} familyId 家庭标识
+ * @param {Array<object>} dishes 待更新菜品
+ * @param {string} categoryId 目标分类标识
+ * @param {object} now 服务端时间
+ * @returns {Promise<number>} 更新数量
+ */
+async function updateDishCategories(transaction, familyId, dishes, categoryId, now) {
+  let updated = 0
+  for (let index = 0; index < dishes.length; index += 20) {
+    const part = dishes.slice(index, index + 20)
+    const result = await transaction.collection('dishes').where({
+      familyId,
+      isPreset: true,
+      _id: _.in(part.map(dish => dish._id))
+    }).update({
+      data: { categoryId, version: _.inc(1), updatedAt: now }
+    })
+    if (result.stats.updated !== part.length) {
+      throw Object.assign(new Error('菜品库存或分类已经变化，请刷新后重试'), { code: 'CONFLICT' })
+    }
+    updated += result.stats.updated
+  }
+  return updated
+}
+
+/**
+ * 批量设置一个分类中的菜品；移出的菜品自动回到“未分类”。
+ * @param {string} openid 厨师微信标识
+ * @param {object} payload 分类、选中菜品和菜品版本
+ * @returns {Promise<object>} 批量归类结果
+ */
+async function batchSetCategory(openid, payload) {
+  const chef = await requireUser(openid, 'chef')
+  const categoryId = cleanText(payload.categoryId, 80)
+  const category = await getDocument('categories', categoryId)
+  if (!category || category.familyId !== chef.familyId) throw Object.assign(new Error('分类不存在'), { code: 'NOT_FOUND' })
+  if (category.isDefault) throw Object.assign(new Error('“未分类”由系统自动管理'), { code: 'INVALID_INPUT' })
+  const selectedIds = normalizeDishSelection(payload.dishIds)
+  const selectedSet = new Set(selectedIds)
+  const versions = payload.versions && typeof payload.versions === 'object' ? payload.versions : {}
+  const defaultCategory = await ensureDefaultCategory(chef.familyId)
+  const transaction = await db.startTransaction()
+  try {
+    const result = await transaction.collection('dishes').where({ familyId: chef.familyId }).limit(100).get()
+    const dishes = result.data.filter(dish => dish.isPreset)
+    const dishMap = new Map(dishes.map(dish => [dish._id, dish]))
+    if (selectedIds.some(id => !dishMap.has(id))) throw Object.assign(new Error('批量归类包含不存在的菜品'), { code: 'INVALID_INPUT' })
+    const affected = dishes.filter(dish => dish.categoryId === categoryId || selectedSet.has(dish._id))
+    if (affected.some(dish => Number(versions[dish._id]) !== Number(dish.version))) {
+      throw Object.assign(new Error('菜品库存或分类已经变化，请刷新后重试'), { code: 'CONFLICT' })
+    }
+    const now = db.serverDate()
+    const movingIn = affected.filter(dish => selectedSet.has(dish._id) && dish.categoryId !== categoryId)
+    const movingOut = affected.filter(dish => !selectedSet.has(dish._id) && dish.categoryId === categoryId)
+    const updated = await updateDishCategories(transaction, chef.familyId, movingIn, categoryId, now)
+      + await updateDishCategories(transaction, chef.familyId, movingOut, defaultCategory._id, now)
+    await transaction.commit()
+    return { categoryId, selectedCount: selectedIds.length, updated }
+  } catch (error) {
+    await transaction.rollback().catch(() => {})
+    throw error
+  }
+}
+
+/**
  * 修改预置菜品的分类和库存，版本号用于避免并发覆盖。
  * @param {string} openid 厨师微信标识
  * @param {object} payload 菜品表单
@@ -345,6 +412,7 @@ exports.main = async (event = {}, context = {}) => {
       case 'chefCatalog': data = await chefCatalog(openid); break
       case 'saveCategory': data = await saveCategory(openid, payload); break
       case 'deleteCategory': data = await deleteCategory(openid, payload); break
+      case 'batchSetCategory': data = await batchSetCategory(openid, payload); break
       case 'saveDish': data = await saveDish(openid, payload); break
       case 'chefMeals': data = await chefMeals(openid, payload); break
       case 'saveMeal': data = await saveMeal(openid, payload); break

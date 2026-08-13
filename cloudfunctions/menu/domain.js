@@ -20,6 +20,22 @@ function normalizeDishSettings(payload) {
 }
 
 /**
+ * 整理批量归类时提交的菜品标识，拒绝重复和超量数据。
+ * @param {Array<string>} dishIds 菜品标识列表
+ * @returns {Array<string>} 去空后的菜品标识
+ */
+function normalizeDishSelection(dishIds) {
+  if (!Array.isArray(dishIds) || dishIds.length > 100) {
+    throw Object.assign(new Error('批量归类的菜品数量不正确'), { code: 'INVALID_INPUT' })
+  }
+  const normalized = dishIds.map(id => cleanText(id, 80))
+  if (normalized.some(id => !id) || new Set(normalized).size !== normalized.length) {
+    throw Object.assign(new Error('批量归类包含无效或重复菜品'), { code: 'INVALID_INPUT' })
+  }
+  return normalized
+}
+
+/**
  * 校验星期菜单序号。
  * @param {number} weekday 星期序号，周一为 1
  */
@@ -30,5 +46,6 @@ function assertWeeklyMenu(weekday) {
 module.exports = {
   WEEKDAY_LABELS,
   normalizeDishSettings,
+  normalizeDishSelection,
   assertWeeklyMenu
 }
