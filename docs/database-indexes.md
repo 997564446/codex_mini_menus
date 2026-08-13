@@ -22,4 +22,9 @@
 
 ## 从餐次菜单升级
 
-部署本版本前，先删除旧的唯一索引 `orders(familyId, dinerId, mealMenuId)`，否则同一个星期菜单在下一周会因为旧索引而无法再次下单。随后建立普通索引 `orders(familyId, dinerId, mealDate)`。旧的 `meal_menus(familyId, date, mealType)` 索引不再使用，可以在新星期菜单完成真机验收后删除。历史菜单和历史订单不需要删除，新代码只读取带 `weekly: true` 的星期菜单；新订单使用“家庭 + 食客 + 日期”生成固定文档 ID，防止同一天产生重复订单。
+部署本版本前，必须先删除以下两个旧的唯一索引：
+
+1. `orders(familyId, dinerId, mealMenuId)`：否则同一个星期菜单在下一周会因为旧索引而无法再次下单。
+2. `meal_menus(familyId, date, mealType)`（控制台索引名通常为 `familyDateMealUnique`）：新的星期菜单没有 `date`、`mealType` 字段，保留该唯一索引会把多条星期菜单都判定为相同的空值组合，导致初始化时报 `E11000 duplicate key`。
+
+删除旧索引后，建立普通索引 `orders(familyId, dinerId, mealDate)` 和 `meal_menus(familyId, weekly, weekday)`，再部署 `menu`、`order` 云函数并上传小程序前端。历史菜单和历史订单不需要删除，新代码只读取带 `weekly: true` 的星期菜单；新订单使用“家庭 + 食客 + 日期”生成固定文档 ID，防止同一天产生重复订单。
