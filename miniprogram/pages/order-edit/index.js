@@ -1,6 +1,5 @@
 const api = require('../../utils/api')
 const { requireActiveSession } = require('../../utils/session')
-const { MEAL_LABELS, money } = require('../../utils/format')
 
 function decorateSpecs(specs, selectedSpecs) {
   return (specs || []).map(spec => ({
@@ -13,45 +12,45 @@ Page({
   data: {
     loading: true,
     mealMenuId: '',
+    date: '',
     meal: null,
     dishes: [],
     existingOrder: null,
     note: '',
-    totalText: '0.00',
     selectedCount: 0,
     saving: false
   },
 
   onLoad(options) {
-    this.setData({ mealMenuId: options.mealMenuId || '' })
+    this.setData({ mealMenuId: options.mealMenuId || '', date: options.date || '' })
     this.loadData()
   },
 
-  /** 加载餐次与当前食客可能存在的待确认订单。 */
+  /** 加载当天星期菜单与当前食客可能存在的待确认订单。 */
   async loadData() {
     try {
       const session = await requireActiveSession()
       if (!session || session.user.role !== 'diner') return wx.navigateBack()
       const [meal, orders] = await Promise.all([
-        api.call('menu', 'mealDetail', { mealMenuId: this.data.mealMenuId }),
+        api.call('menu', 'mealDetail', { mealMenuId: this.data.mealMenuId, date: this.data.date }),
         api.call('order', 'myOrders')
       ])
-      const existingOrder = orders.find(order => order.mealMenuId === meal._id) || null
+      const existingOrder = orders.find(order => order.mealMenuId === meal._id && order.mealDate === this.data.date) || null
       const existingMap = Object.fromEntries(((existingOrder && existingOrder.items) || []).map(item => [item.dishId, item]))
       const dishes = meal.dishes.map(dish => {
         const old = existingMap[dish._id]
         const selectedSpecs = old ? old.selectedSpecs : {}
         return {
           ...dish,
-          priceText: money(dish.priceCents),
           quantity: old ? old.quantity : 0,
+          maxQuantity: dish.stockUnlimited ? 20 : Number(dish.stock || 0) + (old ? old.quantity : 0),
           itemNote: old ? old.note : '',
           selectedSpecs,
           specs: decorateSpecs(dish.specs, selectedSpecs)
         }
       })
       this.setData({
-        meal: { ...meal, mealLabel: MEAL_LABELS[meal.mealType] },
+        meal,
         dishes,
         existingOrder,
         note: existingOrder ? existingOrder.note : '',
@@ -64,11 +63,11 @@ Page({
     }
   },
 
-  /** 增减菜品份数，份数范围为 0 至 20。 */
+  /** 增减菜品份数，有限库存不能超过当前可用数量。 */
   changeQuantity(event) {
     const { index, delta } = event.currentTarget.dataset
     const current = this.data.dishes[index].quantity
-    const next = Math.max(0, Math.min(20, current + Number(delta)))
+    const next = Math.max(0, Math.min(this.data.dishes[index].maxQuantity, current + Number(delta)))
     this.setData({ [`dishes[${index}].quantity`]: next })
     this.recalculate()
   },
@@ -101,11 +100,10 @@ Page({
   /** 修改整单备注。 */
   onNote(event) { this.setData({ note: event.detail.value }) },
 
-  /** 重算选中菜品数和参考总额。 */
+  /** 重算选中菜品数。 */
   recalculate() {
     const selected = this.data.dishes.filter(dish => dish.quantity > 0)
-    const total = selected.reduce((sum, dish) => sum + dish.priceCents * dish.quantity, 0)
-    this.setData({ selectedCount: selected.length, totalText: money(total) })
+    this.setData({ selectedCount: selected.length })
   },
 
   /** 校验必选规格并提交新订单或待确认订单修改。 */
@@ -130,6 +128,7 @@ Page({
     try {
       const result = await api.call('order', 'submit', {
         mealMenuId: this.data.mealMenuId,
+        date: this.data.date,
         clientRequestId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         version: this.data.existingOrder ? this.data.existingOrder.version : 0,
         note: this.data.note,

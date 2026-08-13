@@ -1,6 +1,6 @@
 const api = require('../../utils/api')
 const { requireActiveSession } = require('../../utils/session')
-const { MEAL_LABELS, ORDER_LABELS, money } = require('../../utils/format')
+const { WEEKDAY_LABELS, ORDER_LABELS } = require('../../utils/format')
 
 const NEXT_STATUS = { pending: 'confirmed', confirmed: 'cooking', cooking: 'ready', ready: 'completed' }
 const NEXT_LABEL = { confirmed: '确认订单', cooking: '开始制作', ready: '通知取餐', completed: '完成订单' }
@@ -31,13 +31,10 @@ Page({
         role: session.user.role,
         order: {
           ...order,
-          mealLabel: MEAL_LABELS[order.mealType],
+          weekdayLabel: order.weekdayLabel || WEEKDAY_LABELS[order.weekday] || '历史菜单',
           statusLabel: ORDER_LABELS[order.status],
-          totalText: money(order.totalCents),
           items: order.items.map(item => ({
             ...item,
-            priceText: money(item.priceCents),
-            subtotalText: money(item.subtotalCents),
             specText: Object.entries(item.selectedSpecs || {}).map(([name, values]) => `${name}：${values.join('、')}`).join('；')
           }))
         },
@@ -51,9 +48,9 @@ Page({
     }
   },
 
-  /** 食客返回原餐次修改待确认订单。 */
+  /** 食客返回原日期菜单修改待确认订单。 */
   editOrder() {
-    wx.redirectTo({ url: `/pages/order-edit/index?mealMenuId=${this.data.order.mealMenuId}` })
+    wx.redirectTo({ url: `/pages/order-edit/index?mealMenuId=${this.data.order.mealMenuId}&date=${this.data.order.mealDate}` })
   },
 
   /** 食客取消待确认订单。 */

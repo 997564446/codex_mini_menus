@@ -3,7 +3,7 @@
     <view>
       <text class="eyebrow">{{role === 'chef' ? '今日厨房' : session.family.name}}</text>
       <text class="hero-title">{{role === 'chef' ? '大厨，今天辛苦啦' : '今天想吃点什么？'}}</text>
-      <text class="hero-copy">{{role === 'chef' ? '订单按餐次汇总，备菜一眼就看清' : '选好日期和餐次，再慢慢挑喜欢的菜'}}</text>
+      <text class="hero-copy">{{role === 'chef' ? '按星期菜单汇总订单，备菜一眼就看清' : '看看本周菜单，再挑喜欢的菜'}}</text>
     </view>
     <text class="hero-emoji">{{role === 'chef' ? '👩‍🍳' : '🍲'}}</text>
   </view>
@@ -18,7 +18,7 @@
         bindtap="selectDate"
       >
         <text class="date-day">{{item.day}}</text>
-        <text class="date-short">{{item.short}}</text>
+        <text class="date-short">{{item.isToday ? '今天·' : ''}}{{item.short}}</text>
       </view>
     </view>
   </scroll-view>
@@ -30,8 +30,8 @@
 
   <view wx:elif="{{!meals.length}}" class="card empty-state">
     <text class="empty-emoji">{{role === 'chef' ? '🗓️' : '🍽️'}}</text>
-    <text class="empty-title">{{role === 'chef' ? '这天还没有安排餐次' : '大厨还没开放菜单'}}</text>
-    <text class="empty-copy">{{role === 'chef' ? '到“菜单”里从菜品库安排一顿饭吧。' : '晚点再来看看，也可以提醒一下家里的厨师。'}}</text>
+    <text class="empty-title">{{role === 'chef' ? '这天还没有设置菜单' : '大厨还没设置这天的菜单'}}</text>
+    <text class="empty-copy">{{role === 'chef' ? '到“菜单”里为这一天选择菜品。' : '可以提醒一下家里的厨师。'}}</text>
   </view>
 
   <block wx:else>
@@ -39,10 +39,10 @@
     <view wx:if="{{role === 'diner'}}" class="meal-card card" data-id="{{item._id}}" bindtap="openMeal">
       <view class="meal-head">
         <view>
-          <text class="meal-title">{{item.mealLabel}}</text>
+          <text class="meal-title">{{item.weekdayLabel}}菜单</text>
           <text class="meal-date">{{item.date}}</text>
         </view>
-        <text class="pill">可以点餐</text>
+        <text class="pill">本周菜单</text>
       </view>
       <scroll-view class="dish-preview" scroll-x enhanced show-scrollbar="{{false}}">
         <view class="dish-preview-row">
@@ -50,7 +50,7 @@
             <image wx:if="{{dish.imageFileId}}" class="preview-image" src="{{dish.imageFileId}}" mode="aspectFill" />
             <view wx:else class="preview-image placeholder">🥘</view>
             <text class="preview-name">{{dish.name}}</text>
-            <text class="preview-price">¥{{dish.priceText}}</text>
+            <text class="preview-price">{{dish.stockUnlimited ? '库存无限' : dish.stock > 0 ? '剩余 ' + dish.stock : '已售罄'}}</text>
           </view>
         </view>
       </scroll-view>
@@ -63,8 +63,8 @@
     <view wx:else class="kitchen-card card">
       <view class="meal-head">
         <view>
-          <text class="meal-title">{{item.mealLabel}}</text>
-          <text class="meal-date">{{item.date}} · {{item.status === 'open' ? '点餐中' : item.status === 'closed' ? '已关单' : '草稿'}}</text>
+          <text class="meal-title">{{item.weekdayLabel}}菜单</text>
+          <text class="meal-date">{{item.date}}</text>
         </view>
         <view class="count-bubble"><text>{{item.dinerCount}}</text><text class="count-unit">人</text></view>
       </view>
@@ -86,14 +86,14 @@
       <view wx:if="{{item.orders.length}}" class="order-list">
         <view wx:for="{{item.orders}}" wx:for-item="order" wx:key="_id" class="order-row" data-id="{{order._id}}" bindtap="openOrder">
           <view><text class="order-name">{{order.dinerName}}</text><text class="order-status status-{{order.status}}">{{order.statusLabel}}</text></view>
-          <text class="muted">{{order.items.length}} 道 · ¥{{order.totalText}} ›</text>
+          <text class="muted">{{order.items.length}} 道菜 ›</text>
         </view>
       </view>
       <view class="batch-actions">
-        <button size="mini" class="mini-action confirm" data-id="{{item._id}}" data-status="confirmed" bindtap="batchStatus">确认待处理</button>
-        <button size="mini" class="mini-action" data-id="{{item._id}}" data-status="cooking" bindtap="batchStatus">开始制作</button>
-        <button size="mini" class="mini-action green" data-id="{{item._id}}" data-status="ready" bindtap="batchStatus">通知取餐</button>
-        <button size="mini" class="mini-action plain" data-id="{{item._id}}" data-status="completed" bindtap="batchStatus">完成</button>
+        <button size="mini" class="mini-action confirm" data-id="{{item._id}}" data-date="{{item.date}}" data-status="confirmed" bindtap="batchStatus">确认待处理</button>
+        <button size="mini" class="mini-action" data-id="{{item._id}}" data-date="{{item.date}}" data-status="cooking" bindtap="batchStatus">开始制作</button>
+        <button size="mini" class="mini-action green" data-id="{{item._id}}" data-date="{{item.date}}" data-status="ready" bindtap="batchStatus">通知取餐</button>
+        <button size="mini" class="mini-action plain" data-id="{{item._id}}" data-date="{{item.date}}" data-status="completed" bindtap="batchStatus">完成</button>
       </view>
     </view>
   </block>

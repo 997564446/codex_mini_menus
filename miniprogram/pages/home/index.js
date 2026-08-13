@@ -1,14 +1,16 @@
 const api = require('../../utils/api')
 const { requireActiveSession, syncTabBar } = require('../../utils/session')
-const { MEAL_LABELS, ORDER_LABELS, money, dateOptions } = require('../../utils/format')
+const { ORDER_LABELS, weekOptions } = require('../../utils/format')
+
+const currentWeek = weekOptions()
 
 Page({
   data: {
     loading: true,
     role: '',
     session: { user: {}, family: { name: '' } },
-    dates: dateOptions(7),
-    selectedDate: dateOptions(7)[0].value,
+    dates: currentWeek,
+    selectedDate: currentWeek.find(item => item.isToday).value,
     meals: []
   },
 
@@ -41,9 +43,9 @@ Page({
       const data = await api.call(functionName, action, { startDate: selectedDate, endDate: selectedDate })
       const meals = data.map(meal => ({
         ...meal,
-        mealLabel: MEAL_LABELS[meal.mealType],
-        dishes: (meal.dishes || []).map(dish => ({ ...dish, priceText: money(dish.priceCents) })),
-        orders: (meal.orders || []).map(order => ({ ...order, statusLabel: ORDER_LABELS[order.status], totalText: money(order.totalCents) }))
+        weekdayLabel: meal.weekdayLabel,
+        dishes: meal.dishes || [],
+        orders: (meal.orders || []).map(order => ({ ...order, statusLabel: ORDER_LABELS[order.status] }))
       }))
       this.setData({ meals, loading: false })
     } catch (error) {
@@ -54,7 +56,9 @@ Page({
 
   /** 进入食客点餐页面。 */
   openMeal(event) {
-    wx.navigateTo({ url: `/pages/order-edit/index?mealMenuId=${event.currentTarget.dataset.id}` })
+    const selected = this.data.dates.find(item => item.value === this.data.selectedDate)
+    if (selected && selected.isPast) return wx.showToast({ title: '过去的日期不能再点餐', icon: 'none' })
+    wx.navigateTo({ url: `/pages/order-edit/index?mealMenuId=${event.currentTarget.dataset.id}&date=${this.data.selectedDate}` })
   },
 
   /** 进入厨师的订单详情。 */
@@ -62,12 +66,12 @@ Page({
     wx.navigateTo({ url: `/pages/order-detail/index?id=${event.currentTarget.dataset.id}` })
   },
 
-  /** 厨师将当前餐次中符合条件的订单批量推进一步。 */
+  /** 厨师将当天菜单中符合条件的订单批量推进一步。 */
   async batchStatus(event) {
     const { id, status } = event.currentTarget.dataset
     wx.showLoading({ title: '正在更新' })
     try {
-      const result = await api.call('order', 'chefBatchStatus', { mealMenuId: id, status })
+      const result = await api.call('order', 'chefBatchStatus', { mealMenuId: id, date: this.data.selectedDate, status })
       wx.showToast({ title: result.updated ? `已更新 ${result.updated} 单` : '没有待更新订单', icon: 'none' })
       await this.loadData()
     } catch (error) {

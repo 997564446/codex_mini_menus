@@ -1,4 +1,4 @@
-const MEAL_LABELS = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' }
+const WEEKDAY_LABELS = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
 const ORDER_LABELS = {
   pending: '待确认',
   confirmed: '已确认',
@@ -6,15 +6,6 @@ const ORDER_LABELS = {
   ready: '可取餐',
   completed: '已完成',
   cancelled: '已取消'
-}
-
-/**
- * 将分转换为带两位小数的元展示文本。
- * @param {number} cents 金额（分）
- * @returns {string} 金额文本
- */
-function money(cents) {
-  return (Number(cents || 0) / 100).toFixed(2)
 }
 
 /**
@@ -30,21 +21,25 @@ function dateKey(date = new Date()) {
 }
 
 /**
- * 返回未来若干天的日期选项。
- * @param {number} count 天数
- * @returns {Array<object>} 日期选项
+ * 返回本周周一至周日的日期选项。
+ * @returns {Array<object>} 本周日期选项
  */
-function dateOptions(count = 7) {
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date()
-    date.setDate(date.getDate() + index)
+function weekOptions() {
+  const today = new Date()
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7))
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday)
+    date.setDate(monday.getDate() + index)
     return {
       value: dateKey(date),
-      day: index === 0 ? '今天' : index === 1 ? '明天' : weekdays[date.getDay()],
-      short: `${date.getMonth() + 1}/${date.getDate()}`
+      weekday: index + 1,
+      day: WEEKDAY_LABELS[index + 1],
+      short: `${date.getMonth() + 1}/${date.getDate()}`,
+      isToday: dateKey(date) === dateKey(today),
+      isPast: dateKey(date) < dateKey(today)
     }
   })
 }
 
-module.exports = { MEAL_LABELS, ORDER_LABELS, money, dateKey, dateOptions }
+module.exports = { WEEKDAY_LABELS, ORDER_LABELS, dateKey, weekOptions }

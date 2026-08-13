@@ -74,4 +74,19 @@ function normalizeItems(items) {
   })
 }
 
-module.exports = { TRANSITIONS, assertTransition, validateSelectedSpecs, normalizeItems }
+/**
+ * 计算改单前后每道菜应归还或扣减的有限库存差额。
+ * @param {Array<object>} oldItems 原订单条目
+ * @param {Array<object>} newItems 新订单条目
+ * @returns {Array<object>} 正数为归还，负数为扣减
+ */
+function inventoryDeltas(oldItems, newItems) {
+  const oldMap = new Map((oldItems || []).filter(item => item.stockReserved).map(item => [item.dishId, Number(item.quantity || 0)]))
+  const newMap = new Map((newItems || []).filter(item => item.stockReserved).map(item => [item.dishId, Number(item.quantity || 0)]))
+  return [...new Set([...oldMap.keys(), ...newMap.keys()])].map(dishId => ({
+    dishId,
+    delta: Number(oldMap.get(dishId) || 0) - Number(newMap.get(dishId) || 0)
+  })).filter(item => item.delta)
+}
+
+module.exports = { TRANSITIONS, assertTransition, validateSelectedSpecs, normalizeItems, inventoryDeltas }

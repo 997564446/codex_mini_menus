@@ -1,6 +1,6 @@
 const api = require('../../utils/api')
 const { requireActiveSession, syncTabBar } = require('../../utils/session')
-const { MEAL_LABELS, ORDER_LABELS, money, dateKey } = require('../../utils/format')
+const { WEEKDAY_LABELS, ORDER_LABELS } = require('../../utils/format')
 
 Page({
   data: {
@@ -26,28 +26,34 @@ Page({
     wx.stopPullDownRefresh()
   },
 
-  /** 根据角色加载菜品、餐次或个人订单。 */
+  /** 根据角色加载菜品、星期菜单或个人订单。 */
   async loadData() {
     this.setData({ loading: true })
     try {
       if (this.data.role === 'chef') {
-        const end = new Date()
-        end.setDate(end.getDate() + 30)
         const [catalog, meals] = await Promise.all([
           api.call('menu', 'chefCatalog'),
-          api.call('menu', 'chefMeals', { startDate: dateKey(), endDate: dateKey(end) })
+          api.call('menu', 'chefMeals')
         ])
         const categoryMap = Object.fromEntries(catalog.categories.map(category => [category._id, category.name]))
         this.setData({
           categories: catalog.categories,
-          dishes: catalog.dishes.map(dish => ({ ...dish, priceText: money(dish.priceCents), categoryName: categoryMap[dish.categoryId] || '未分类' })),
-          meals: meals.map(meal => ({ ...meal, mealLabel: MEAL_LABELS[meal.mealType] })),
+          dishes: catalog.dishes.map(dish => ({
+            ...dish,
+            categoryName: categoryMap[dish.categoryId] || '未分类',
+            stockText: dish.stockUnlimited ? '无限' : String(dish.stock || 0)
+          })),
+          meals,
           loading: false
         })
       } else {
         const orders = await api.call('order', 'myOrders')
         this.setData({
-          orders: orders.map(order => ({ ...order, statusLabel: ORDER_LABELS[order.status], mealLabel: MEAL_LABELS[order.mealType], totalText: money(order.totalCents) })),
+          orders: orders.map(order => ({
+            ...order,
+            statusLabel: ORDER_LABELS[order.status],
+            weekdayLabel: order.weekdayLabel || WEEKDAY_LABELS[order.weekday] || '历史菜单'
+          })),
           loading: false
         })
       }
@@ -57,7 +63,7 @@ Page({
     }
   },
 
-  /** 切换厨师的菜品库与餐次菜单。 */
+  /** 切换厨师的菜品库与星期菜单。 */
   switchChefTab(event) {
     this.setData({ chefTab: event.currentTarget.dataset.tab })
   },
@@ -112,36 +118,16 @@ Page({
     await this.loadData()
   },
 
-  /** 打开菜品新建或编辑页。 */
+  /** 打开预置菜品的分类与库存设置页。 */
   editDish(event) {
     const id = event.currentTarget.dataset.id
-    wx.navigateTo({ url: `/pages/dish-edit/index${id ? `?id=${id}` : ''}` })
+    if (id) wx.navigateTo({ url: `/pages/dish-edit/index?id=${id}` })
   },
 
-  /** 上架或下架菜品。 */
-  async toggleDish(event) {
-    const { id, enabled } = event.currentTarget.dataset
-    try {
-      await api.call('menu', 'setDishEnabled', { dishId: id, enabled: !enabled })
-      await this.loadData()
-    } catch (error) { api.showError(error) }
-  },
-
-  /** 打开餐次新建或编辑页。 */
+  /** 打开指定星期的菜单编辑页。 */
   editMeal(event) {
     const id = event.currentTarget.dataset.id
     wx.navigateTo({ url: `/pages/meal-edit/index${id ? `?id=${id}` : ''}` })
-  },
-
-  /** 手动开放或关闭餐次。 */
-  async toggleMeal(event) {
-    const { id, status } = event.currentTarget.dataset
-    const target = status === 'open' ? 'closed' : 'open'
-    try {
-      await api.call('menu', 'setMealStatus', { mealMenuId: id, status: target })
-      wx.showToast({ title: target === 'open' ? '已经开放点餐' : '已经关闭点餐', icon: 'none' })
-      await this.loadData()
-    } catch (error) { api.showError(error) }
   },
 
   /** 打开订单详情。 */

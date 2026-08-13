@@ -36,24 +36,22 @@
 | `chefCatalog` | 无 | 厨师 | 分类和菜品库 |
 | `saveCategory` | 分类名称与可选 ID | 厨师 | 新建或修改分类 |
 | `deleteCategory` | `categoryId` | 厨师 | 删除分类并将菜品移入“未分类” |
-| `saveDish` | 菜品、规格、版本号 | 厨师 | 新建或修改菜品 |
-| `setDishEnabled` | `dishId`、`enabled` | 厨师 | 上下架菜品 |
-| `chefMeals` | 日期范围 | 厨师 | 查询餐次菜单 |
-| `saveMeal` | 日期、餐次、菜品和版本号 | 厨师 | 新建或修改餐次 |
-| `setMealStatus` | `mealMenuId`、`status` | 厨师 | 开放或关闭点餐 |
-| `openMeals` | 日期范围 | 活跃食客 | 查询开放菜单 |
-| `mealDetail` | `mealMenuId` | 家庭成员 | 餐次详情 |
+| `saveDish` | `dishId`、分类、库存、版本号 | 厨师 | 修改预置菜品的分类和库存 |
+| `chefMeals` | 无 | 厨师 | 查询周一至周日固定菜单 |
+| `saveMeal` | `mealMenuId`、菜品和版本号 | 厨师 | 保存指定星期菜单 |
+| `openMeals` | 具体日期 | 活跃食客 | 查询日期对应的星期菜单 |
+| `mealDetail` | `mealMenuId`、食客需传日期 | 家庭成员 | 星期菜单详情 |
 
 ## `order`
 
 | action | 主要 payload | 权限 | 说明 |
 |---|---|---|---|
-| `submit` | 餐次、条目、`clientRequestId`、版本号 | 活跃食客 | 新建或修改唯一订单 |
+| `submit` | 星期菜单、日期、条目、`clientRequestId`、版本号 | 活跃食客 | 新建或修改当天唯一订单并占用库存 |
 | `myOrders` | 无 | 活跃食客 | 本人订单列表 |
 | `detail` | `orderId` | 家庭成员 | 权限范围内订单详情 |
 | `cancelMine` | `orderId`、版本号 | 活跃食客 | 取消待确认订单 |
-| `chefKitchen` | 日期范围 | 厨师 | 厨房餐次聚合 |
+| `chefKitchen` | 单个日期 | 厨师 | 厨房当天菜单聚合 |
 | `chefSetStatus` | 订单、目标状态、版本号 | 厨师 | 逐单推进或取消 |
-| `chefBatchStatus` | 餐次与目标状态 | 厨师 | 批量推进紧邻状态 |
+| `chefBatchStatus` | 菜单、日期与目标状态 | 厨师 | 批量推进当天紧邻状态 |
 | `notifications` | 无 | 家庭成员 | 本人站内通知 |
 | `readNotifications` | 可选通知 ID | 家庭成员 | 标记已读 |
