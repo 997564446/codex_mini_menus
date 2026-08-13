@@ -1,11 +1,9 @@
 <view class="entry-page">
   <view class="family-scene">
-    <view class="sun">☀️</view>
-    <view class="house">🏡</view>
-    <view class="family">👨‍👩‍👧‍👦</view>
+    <image class="brand-avatar" src="/images/avatar-jiner-chisha-nie.png" mode="aspectFit" />
   </view>
   <view class="brand">
-    <text class="brand-title">咱家开饭</text>
+    <text class="brand-title">今儿吃啥捏</text>
     <text class="brand-copy">今天想吃什么，先跟家里的大厨说一声</text>
   </view>
 
