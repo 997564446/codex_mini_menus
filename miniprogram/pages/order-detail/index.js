@@ -1,6 +1,6 @@
 const api = require('../../utils/api')
 const { requireActiveSession } = require('../../utils/session')
-const { WEEKDAY_LABELS, ORDER_LABELS } = require('../../utils/format')
+const { WEEKDAY_LABELS, MEAL_TYPE_LABELS, ORDER_LABELS } = require('../../utils/format')
 
 const NEXT_STATUS = { pending: 'confirmed', confirmed: 'cooking', cooking: 'ready', ready: 'completed' }
 const NEXT_LABEL = { confirmed: '确认订单', cooking: '开始制作', ready: '通知取餐', completed: '完成订单' }
@@ -32,6 +32,7 @@ Page({
         order: {
           ...order,
           weekdayLabel: order.weekdayLabel || WEEKDAY_LABELS[order.weekday] || '历史菜单',
+          mealTypeLabel: order.mealTypeLabel || MEAL_TYPE_LABELS[order.mealType] || '',
           statusLabel: ORDER_LABELS[order.status],
           items: order.items.map(item => ({
             ...item,

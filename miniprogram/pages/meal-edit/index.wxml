@@ -1,5 +1,9 @@
 <view class="edit-page">
-  <view class="meal-hero card"><text class="meal-hero-emoji">🗓️</text><view><text class="meal-hero-title">设置{{weekdayLabel}}菜单</text><text class="meal-hero-copy">勾选当天可供家人选择的菜品</text></view></view>
+  <view class="meal-hero card"><text class="meal-hero-emoji">🗓️</text><view><text class="meal-hero-title">设置{{weekdayLabel}}菜单</text><text class="meal-hero-copy">分别设置早餐、中餐和晚餐</text></view></view>
+
+  <picker class="meal-picker card" range="{{mealTypeOptions}}" range-key="label" value="{{mealTypeIndex}}" bindchange="onMealTypeChange">
+    <view class="meal-picker-value"><text>当前餐别</text><text class="meal-picker-label">{{mealTypeLabel}}⌄</text></view>
+  </picker>
 
   <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在整理星期菜单…</text></view>
   <view wx:elif="{{!dishes.length}}" class="card empty-state"><text class="empty-emoji">🥕</text><text class="empty-title">菜品库还没准备好</text><text class="empty-copy">请返回菜品库下拉刷新。</text></view>
@@ -13,7 +17,7 @@
 
     <view class="dish-panel">
       <view class="dish-panel-head">
-        <view class="dish-panel-title"><text class="category-title">{{selectedCategoryName}}</text><text class="selected-count">菜单已选 {{selectedDishIds.length}} 道</text></view>
+        <view class="dish-panel-title"><text class="category-title">{{selectedCategoryName}}</text><text class="selected-count">{{mealTypeLabel}}已选 {{selectedDishIds.length}} 道</text></view>
         <button class="select-all-btn" disabled="{{!categoryDishes.length}}" bindtap="toggleSelectAll">{{categoryAllSelected ? '取消全选' : '全选'}}</button>
       </view>
       <scroll-view class="dish-list" scroll-y enhanced show-scrollbar="{{false}}">
@@ -27,5 +31,5 @@
       </scroll-view>
     </view>
   </view>
-  <button class="primary-btn save-btn" loading="{{saving}}" disabled="{{saving || !dishes.length}}" bindtap="save">保存{{weekdayLabel}}菜单</button>
+  <button class="primary-btn save-btn" loading="{{saving}}" disabled="{{saving || !dirty || !dishes.length}}" bindtap="save">保存{{weekdayLabel}}{{mealTypeLabel}}菜单</button>
 </view>

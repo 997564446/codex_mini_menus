@@ -36,13 +36,13 @@
 
   <block wx:else>
   <block wx:for="{{meals}}" wx:key="_id">
-    <view wx:if="{{role === 'diner'}}" class="meal-card card" data-id="{{item._id}}" bindtap="openMeal">
+    <view wx:if="{{role === 'diner'}}" class="meal-card card {{item.closed ? 'closed' : ''}}" data-id="{{item._id}}" bindtap="openMeal">
       <view class="meal-head">
         <view>
-          <text class="meal-title">{{item.weekdayLabel}}菜单</text>
+          <text class="meal-title">{{item.mealTypeLabel}}</text>
           <text class="meal-date">{{item.date}}</text>
         </view>
-        <text class="pill">本周菜单</text>
+        <text class="pill">{{item.closed ? '已截止' : item.deadlineText}}</text>
       </view>
       <scroll-view class="dish-preview" scroll-x enhanced show-scrollbar="{{false}}">
         <view class="dish-preview-row">
@@ -56,14 +56,14 @@
       </scroll-view>
       <view class="meal-footer">
         <text class="muted">共 {{item.dishes.length}} 道菜</text>
-        <text class="go-order">去点餐 →</text>
+        <text class="go-order">{{item.closed ? '已截止' : '去点餐 →'}}</text>
       </view>
     </view>
 
     <view wx:else class="kitchen-card card">
       <view class="meal-head">
         <view>
-          <text class="meal-title">{{item.weekdayLabel}}菜单</text>
+          <text class="meal-title">{{item.mealTypeLabel}} · {{item.weekdayLabel}}</text>
           <text class="meal-date">{{item.date}}</text>
         </view>
         <view class="count-bubble"><text>{{item.dinerCount}}</text><text class="count-unit">人</text></view>

@@ -1,34 +1,44 @@
 <view class="order-page">
   <view wx:if="{{loading}}" class="card empty-state"><text class="empty-emoji">🥄</text><text class="empty-copy">正在准备菜单…</text></view>
   <block wx:else>
-    <view class="meal-banner card"><view><text class="meal-title">{{meal.date}} · {{meal.weekdayLabel}}菜单</text><text class="meal-copy">库存有限的菜品会在下单后扣减</text></view><text class="meal-emoji">🍲</text></view>
+    <view class="meal-banner card"><view><text class="meal-title">{{meal.date}} · {{meal.mealTypeLabel}}</text><text class="meal-copy">主食必选，库存有限的菜品下单后扣减</text></view><text class="meal-emoji">🍲</text></view>
     <view wx:if="{{existingOrder && existingOrder.status !== 'pending'}}" class="locked-tip">🔒 厨师已处理或订单已取消，现在不能修改。</view>
 
-    <view wx:for="{{dishes}}" wx:key="_id" class="dish-card card">
-      <view class="dish-main">
-        <image wx:if="{{item.imageFileId}}" class="dish-image" src="{{item.imageFileId}}" mode="aspectFill" />
-        <view wx:else class="dish-image placeholder">🥘</view>
-        <view class="dish-info"><text class="dish-name">{{item.name}}</text><text class="dish-copy">{{item.stockUnlimited ? '库存无限' : item.maxQuantity > 0 ? '当前可选 ' + item.maxQuantity + ' 份' : '库存为 0，暂不可选'}}</text></view>
-        <view class="stepper"><button disabled="{{item.quantity === 0}}" data-index="{{index}}" data-delta="-1" bindtap="changeQuantity">−</button><text>{{item.quantity}}</text><button disabled="{{item.quantity >= item.maxQuantity}}" data-index="{{index}}" data-delta="1" bindtap="changeQuantity">＋</button></view>
-      </view>
-      <view wx:if="{{item.quantity > 0 && item.specs.length}}" class="spec-area">
-        <view wx:for="{{item.specs}}" wx:for-item="spec" wx:for-index="specIndex" wx:key="name" class="spec-block">
-          <text class="spec-title">{{spec.name}} <text wx:if="{{spec.required}}" class="required">必选</text><text wx:else class="optional">选填</text></text>
-          <radio-group wx:if="{{spec.type === 'single'}}" class="option-row" data-dish="{{index}}" data-spec="{{specIndex}}" bindchange="onSingleSpec">
-            <label wx:for="{{spec.options}}" wx:for-item="option" wx:key="value" class="option-pill {{option.checked ? 'selected' : ''}}"><radio value="{{option.value}}" checked="{{option.checked}}" color="#ef6a4c" />{{option.value}}</label>
-          </radio-group>
-          <checkbox-group wx:else class="option-row" data-dish="{{index}}" data-spec="{{specIndex}}" bindchange="onMultipleSpec">
-            <label wx:for="{{spec.options}}" wx:for-item="option" wx:key="value" class="option-pill {{option.checked ? 'selected' : ''}}"><checkbox value="{{option.value}}" checked="{{option.checked}}" color="#55a66f" />{{option.value}}</label>
-          </checkbox-group>
+    <view class="order-menu-layout card">
+      <scroll-view class="order-category-sidebar" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:for="{{categories}}" wx:key="_id" class="order-category {{selectedCategoryId === item._id ? 'active' : ''}}" data-id="{{item._id}}" bindtap="selectCategory">
+          <text>{{item.name}}</text><text wx:if="{{item.systemType === 'staple'}}" class="required-dot">必选</text>
         </view>
+      </scroll-view>
+      <view class="order-dish-panel">
+        <view class="order-dish-head"><text>{{selectedCategoryName}}</text><text class="muted">库存 0 的菜品不可选</text></view>
+        <scroll-view class="order-dish-list" scroll-y enhanced show-scrollbar="{{false}}">
+          <view wx:for="{{categoryDishes}}" wx:key="_id" class="dish-card {{!item.stockUnlimited && item.maxQuantity <= 0 ? 'sold-out' : ''}}">
+            <view class="dish-main">
+              <view class="dish-info"><text class="dish-name">{{item.name}}</text><text class="dish-copy">{{item.stockUnlimited ? '库存无限' : item.maxQuantity > 0 ? '可选 ' + item.maxQuantity + ' 份' : '库存为 0，暂不可选'}}</text></view>
+              <view class="stepper"><button disabled="{{item.quantity === 0}}" data-id="{{item._id}}" data-delta="-1" bindtap="changeQuantity">−</button><text>{{item.quantity}}</text><button disabled="{{item.quantity >= item.maxQuantity}}" data-id="{{item._id}}" data-delta="1" bindtap="changeQuantity">＋</button></view>
+            </view>
+            <view wx:if="{{item.quantity > 0 && item.specs.length}}" class="spec-area">
+              <view wx:for="{{item.specs}}" wx:for-item="spec" wx:for-index="specIndex" wx:key="name" class="spec-block">
+                <text class="spec-title">{{spec.name}} <text wx:if="{{spec.required}}" class="required">必选</text><text wx:else class="optional">选填</text></text>
+                <radio-group wx:if="{{spec.type === 'single'}}" class="option-row" data-id="{{item._id}}" data-spec="{{specIndex}}" bindchange="onSingleSpec">
+                  <label wx:for="{{spec.options}}" wx:for-item="option" wx:key="value" class="option-pill {{option.checked ? 'selected' : ''}}"><radio value="{{option.value}}" checked="{{option.checked}}" color="#ef6a4c" />{{option.value}}</label>
+                </radio-group>
+                <checkbox-group wx:else class="option-row" data-id="{{item._id}}" data-spec="{{specIndex}}" bindchange="onMultipleSpec">
+                  <label wx:for="{{spec.options}}" wx:for-item="option" wx:key="value" class="option-pill {{option.checked ? 'selected' : ''}}"><checkbox value="{{option.value}}" checked="{{option.checked}}" color="#55a66f" />{{option.value}}</label>
+                </checkbox-group>
+              </view>
+            </view>
+            <input wx:if="{{item.quantity > 0}}" class="item-note" value="{{item.itemNote}}" data-id="{{item._id}}" bindinput="onItemNote" maxlength="80" placeholder="备注：少盐、不要葱" />
+          </view>
+        </scroll-view>
       </view>
-      <input wx:if="{{item.quantity > 0}}" class="item-note" value="{{item.itemNote}}" data-index="{{index}}" bindinput="onItemNote" maxlength="80" placeholder="这道菜的备注，例如：少盐、不要葱" />
     </view>
 
     <view class="note-card card"><text class="field-label">整单备注</text><textarea class="textarea" value="{{note}}" bindinput="onNote" maxlength="200" placeholder="告诉厨师这顿饭的其他需要" /></view>
     <view class="submit-bar">
       <view><text class="submit-count">已选 {{selectedCount}} 道</text></view>
-      <button class="submit-btn" loading="{{saving}}" disabled="{{saving || (existingOrder && existingOrder.status !== 'pending')}}" bindtap="submit">{{existingOrder ? '保存修改' : '告诉厨师'}}</button>
+      <button class="submit-btn" loading="{{saving}}" disabled="{{saving || (existingOrder && existingOrder.status !== 'pending')}}" bindtap="submit">{{existingOrder ? '保存加菜' : '告诉厨师'}}</button>
     </view>
   </block>
 </view>

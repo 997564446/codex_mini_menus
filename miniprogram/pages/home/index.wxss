@@ -11,6 +11,7 @@
 .date-day { font-size: 25rpx; font-weight: 700; }
 .date-short { margin-top: 7rpx; font-size: 21rpx; opacity: .75; }
 .meal-card, .kitchen-card { margin-bottom: 26rpx; padding: 30rpx; }
+.meal-card.closed { opacity: .58; }
 .meal-head { display: flex; align-items: center; justify-content: space-between; }
 .meal-title { display: block; font-size: 36rpx; font-weight: 800; }
 .meal-date { display: block; margin-top: 7rpx; color: #8a7d70; font-size: 23rpx; }

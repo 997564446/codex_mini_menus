@@ -1,6 +1,15 @@
 const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
-const { WEEKDAY_LABELS, normalizeDishSettings, normalizeDishSelection, assertWeeklyMenu } = require('./domain')
+const {
+  WEEKDAY_LABELS,
+  MEAL_TYPES,
+  normalizeDishSettings,
+  normalizeDishSelection,
+  normalizeCategoryOrder,
+  assertWeeklyMenu,
+  assertMealType,
+  assertMealDishCategories
+} = require('./domain')
 const PRESET_DISHES = require('./preset-dishes')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
@@ -34,18 +43,105 @@ async function requireUser(openid, role) {
 async function ensureDefaultCategory(familyId) {
   const categoryId = `uncat_${crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 24)}`
   const existing = await getDocument('categories', categoryId)
-  if (existing) return existing
+  if (existing) {
+    if (existing.systemType !== 'uncategorized' || existing.sort !== 9999999999999) {
+      await db.collection('categories').doc(categoryId).update({
+        data: { systemType: 'uncategorized', isDefault: true, sort: 9999999999999, updatedAt: db.serverDate() }
+      })
+    }
+    return { ...existing, systemType: 'uncategorized', isDefault: true, sort: 9999999999999 }
+  }
   const now = db.serverDate()
   const data = {
     familyId,
     name: '未分类',
     isDefault: true,
+    systemType: 'uncategorized',
     sort: 9999999999999,
     createdAt: now,
     updatedAt: now
   }
   await db.collection('categories').doc(categoryId).set({ data })
   return { _id: categoryId, ...data }
+}
+
+/**
+ * 获取或创建家庭的系统“主食”分类。
+ * @param {string} familyId 家庭标识
+ * @returns {Promise<object>} 主食分类
+ */
+async function ensureStapleCategory(familyId) {
+  const categoryId = `staple_${crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 24)}`
+  const existing = await getDocument('categories', categoryId)
+  const sort = 9999999999998
+  if (existing) {
+    if (existing.name !== '主食' || existing.systemType !== 'staple' || existing.sort !== sort) {
+      await db.collection('categories').doc(categoryId).update({
+        data: { name: '主食', systemType: 'staple', isDefault: true, sort, updatedAt: db.serverDate() }
+      })
+    }
+    return { ...existing, name: '主食', systemType: 'staple', isDefault: true, sort }
+  }
+  const now = db.serverDate()
+  const data = { familyId, name: '主食', isDefault: true, systemType: 'staple', sort, createdAt: now, updatedAt: now }
+  await db.collection('categories').doc(categoryId).set({ data })
+  return { _id: categoryId, ...data }
+}
+
+/**
+ * 获取或创建主食分类中的“不要主食”系统菜品。
+ * @param {string} familyId 家庭标识
+ * @param {string} categoryId 主食分类标识
+ * @returns {Promise<object>} 不要主食菜品
+ */
+async function ensureNoStapleDish(familyId, categoryId) {
+  const dishId = `no_staple_${crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 24)}`
+  const existing = await getDocument('dishes', dishId)
+  const now = db.serverDate()
+  if (existing) {
+    const expected = {
+      name: '不要主食',
+      presetName: '不要主食',
+      isPreset: true,
+      isSystemDish: true,
+      systemDishType: 'no_staple',
+      categoryId,
+      priceCents: 0,
+      stockUnlimited: true,
+      stock: 0,
+      enabled: true,
+      deletedAt: null,
+      sort: -1
+    }
+    const updates = Object.fromEntries(Object.entries(expected).filter(([key, value]) => existing[key] !== value))
+    if (Object.keys(updates).length) {
+      updates.updatedAt = now
+      await db.collection('dishes').doc(dishId).update({ data: updates })
+    }
+    return { ...existing, ...expected }
+  }
+  const data = {
+    familyId,
+    name: '不要主食',
+    presetName: '不要主食',
+    isPreset: true,
+    isSystemDish: true,
+    systemDishType: 'no_staple',
+    categoryId,
+    description: '',
+    imageFileId: '',
+    priceCents: 0,
+    specs: [],
+    stockUnlimited: true,
+    stock: 0,
+    enabled: true,
+    sort: -1,
+    version: 1,
+    createdAt: now,
+    updatedAt: now
+  }
+  await db.collection('dishes').doc(dishId).set({ data })
+  return { _id: dishId, ...data }
 }
 
 /**
@@ -64,7 +160,7 @@ async function ensurePresetDishes(familyId, categoryId) {
       const updates = {}
       if (!existing.isPreset) updates.isPreset = true
       if (existing.presetName !== name) updates.presetName = name
-      if (!existing.enabled) updates.enabled = true
+      if (!existing.enabled && !existing.deletedAt) updates.enabled = true
       if (typeof existing.stockUnlimited !== 'boolean') updates.stockUnlimited = false
       if (!Number.isInteger(existing.stock)) updates.stock = 0
       if (!Number.isInteger(existing.sort)) updates.sort = sort
@@ -116,34 +212,48 @@ function weekdayOf(date) {
 }
 
 /**
- * 为家庭建立固定的周一至周日菜单。
+ * 为家庭建立周一至周日、早餐中餐晚餐共 21 份固定菜单。
  * @param {string} familyId 家庭标识
  * @returns {Promise<Array<object>>} 星期菜单
  */
 async function ensureWeeklyMenus(familyId) {
-  const existingResult = await db.collection('meal_menus').where({ familyId, weekly: true }).limit(10).get()
-  const existingMap = new Map(existingResult.data.map(menu => [Number(menu.weekday), menu]))
-  const familyKey = crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 20)
-  for (let weekday = 1; weekday <= 7; weekday += 1) {
-    if (existingMap.has(weekday)) continue
-    const menuId = `weekly_${familyKey}_${weekday}`
-    const now = db.serverDate()
-    await db.collection('meal_menus').doc(menuId).set({
-      data: {
-        familyId,
-        weekly: true,
-        weekday,
-        weekdayLabel: WEEKDAY_LABELS[weekday],
-        dishIds: [],
-        status: 'open',
-        version: 1,
-        createdAt: now,
-        updatedAt: now
-      }
+  const stapleCategory = await ensureStapleCategory(familyId)
+  const noStapleDish = await ensureNoStapleDish(familyId, stapleCategory._id)
+  const existingResult = await db.collection('meal_menus').where({ familyId, weekly: true }).limit(100).get()
+  const legacyMenus = existingResult.data.filter(menu => !MEAL_TYPES[menu.mealType])
+  for (const legacy of legacyMenus) {
+    await db.collection('meal_menus').doc(legacy._id).update({
+      data: { weekly: false, migratedVersion: '1.2.2', dishIds: [], updatedAt: db.serverDate() }
     })
   }
-  const result = await db.collection('meal_menus').where({ familyId, weekly: true }).orderBy('weekday', 'asc').get()
-  return result.data
+  const activeMenus = existingResult.data.filter(menu => MEAL_TYPES[menu.mealType])
+  const existingMap = new Map(activeMenus.map(menu => [`${Number(menu.weekday)}|${menu.mealType}`, menu]))
+  const familyKey = crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 20)
+  for (let weekday = 1; weekday <= 7; weekday += 1) {
+    for (const [mealType, config] of Object.entries(MEAL_TYPES)) {
+      if (existingMap.has(`${weekday}|${mealType}`)) continue
+      const menuId = `weekly_${familyKey}_${weekday}_${mealType}`
+      const now = db.serverDate()
+      await db.collection('meal_menus').doc(menuId).set({
+        data: {
+          familyId,
+          weekly: true,
+          weekday,
+          weekdayLabel: WEEKDAY_LABELS[weekday],
+          mealType,
+          mealTypeLabel: config.label,
+          dishIds: [noStapleDish._id],
+          status: 'open',
+          version: 1,
+          createdAt: now,
+          updatedAt: now
+        }
+      })
+    }
+  }
+  const result = await db.collection('meal_menus').where({ familyId, weekly: true }).orderBy('weekday', 'asc').limit(100).get()
+  return result.data.sort((left, right) => Number(left.weekday) - Number(right.weekday)
+    || Object.keys(MEAL_TYPES).indexOf(left.mealType) - Object.keys(MEAL_TYPES).indexOf(right.mealType))
 }
 
 async function getDishesByIds(familyId, ids) {
@@ -165,16 +275,22 @@ async function getDishesByIds(familyId, ids) {
 async function chefCatalog(openid) {
   const chef = await requireUser(openid, 'chef')
   const defaultCategory = await ensureDefaultCategory(chef.familyId)
-  await ensurePresetDishes(chef.familyId, defaultCategory._id)
+  const stapleCategory = await ensureStapleCategory(chef.familyId)
+  await Promise.all([
+    ensurePresetDishes(chef.familyId, defaultCategory._id),
+    ensureNoStapleDish(chef.familyId, stapleCategory._id)
+  ])
   const [categories, dishes] = await Promise.all([
     db.collection('categories').where({ familyId: chef.familyId }).orderBy('sort', 'asc').get(),
     db.collection('dishes').where({ familyId: chef.familyId }).orderBy('updatedAt', 'desc').get()
   ])
   return {
-    categories: categories.data,
+    categories: categories.data.sort((left, right) => Number(left.sort) - Number(right.sort)),
     dishes: dishes.data
-      .filter(dish => dish.isPreset)
-      .sort((left, right) => Number(left.sort || 9999) - Number(right.sort || 9999) || left.name.localeCompare(right.name, 'zh-CN'))
+      .filter(dish => dish.enabled !== false && !dish.deletedAt)
+      .sort((left, right) => (Number.isFinite(Number(left.sort)) ? Number(left.sort) : 9999)
+        - (Number.isFinite(Number(right.sort)) ? Number(right.sort) : 9999)
+        || left.name.localeCompare(right.name, 'zh-CN'))
   }
 }
 
@@ -188,11 +304,12 @@ async function saveCategory(openid, payload) {
   const chef = await requireUser(openid, 'chef')
   const name = cleanText(payload.name, 16)
   if (!name) throw Object.assign(new Error('分类名称不能为空'), { code: 'INVALID_INPUT' })
+  if (['未分类', '主食'].includes(name)) throw Object.assign(new Error('该名称由系统分类使用'), { code: 'INVALID_INPUT' })
   const now = db.serverDate()
   if (payload.categoryId) {
     const existing = await getDocument('categories', payload.categoryId)
     if (!existing || existing.familyId !== chef.familyId) throw Object.assign(new Error('分类不存在'), { code: 'NOT_FOUND' })
-    if (existing.isDefault) throw Object.assign(new Error('“未分类”是系统默认分类，不能修改'), { code: 'INVALID_INPUT' })
+    if (existing.isDefault) throw Object.assign(new Error('系统默认分类不能修改'), { code: 'INVALID_INPUT' })
     await db.collection('categories').doc(existing._id).update({ data: { name, updatedAt: now } })
     return { _id: existing._id, name }
   }
@@ -200,6 +317,34 @@ async function saveCategory(openid, payload) {
     data: { familyId: chef.familyId, name, sort: Number(payload.sort || Date.now()), createdAt: now, updatedAt: now }
   })
   return { _id: result._id, name }
+}
+
+/**
+ * 保存厨师拖动后的自定义分类顺序，系统分类始终固定在底部。
+ * @param {string} openid 厨师微信标识
+ * @param {object} payload 自定义分类标识顺序
+ * @returns {Promise<object>} 保存数量
+ */
+async function saveCategoryOrder(openid, payload) {
+  const chef = await requireUser(openid, 'chef')
+  const categoryIds = normalizeCategoryOrder(payload.categoryIds)
+  const result = await db.collection('categories').where({ familyId: chef.familyId }).limit(100).get()
+  const customCategories = result.data.filter(category => !category.isDefault)
+  if (categoryIds.length !== customCategories.length || categoryIds.some(id => !customCategories.some(category => category._id === id))) {
+    throw Object.assign(new Error('分类已经变化，请刷新后重试'), { code: 'CONFLICT' })
+  }
+  const transaction = await db.startTransaction()
+  try {
+    const now = db.serverDate()
+    for (let index = 0; index < categoryIds.length; index += 1) {
+      await transaction.collection('categories').doc(categoryIds[index]).update({ data: { sort: index + 1, updatedAt: now } })
+    }
+    await transaction.commit()
+    return { updated: categoryIds.length }
+  } catch (error) {
+    await transaction.rollback().catch(() => {})
+    throw error
+  }
 }
 
 /**
@@ -214,7 +359,7 @@ async function deleteCategory(openid, payload) {
   if (!categoryId) throw Object.assign(new Error('请选择要删除的分类'), { code: 'INVALID_INPUT' })
   const existing = await getDocument('categories', categoryId)
   if (!existing || existing.familyId !== chef.familyId) throw Object.assign(new Error('分类不存在'), { code: 'NOT_FOUND' })
-  if (existing.isDefault) throw Object.assign(new Error('“未分类”是系统默认分类，不能删除'), { code: 'INVALID_INPUT' })
+  if (existing.isDefault) throw Object.assign(new Error('系统默认分类不能删除'), { code: 'INVALID_INPUT' })
   const defaultCategory = await ensureDefaultCategory(chef.familyId)
   await db.collection('dishes').where({ familyId: chef.familyId, categoryId }).update({
     data: { categoryId: defaultCategory._id, version: _.inc(1), updatedAt: db.serverDate() }
@@ -238,7 +383,6 @@ async function updateDishCategories(transaction, familyId, dishes, categoryId, n
     const part = dishes.slice(index, index + 20)
     const result = await transaction.collection('dishes').where({
       familyId,
-      isPreset: true,
       _id: _.in(part.map(dish => dish._id))
     }).update({
       data: { categoryId, version: _.inc(1), updatedAt: now }
@@ -262,7 +406,7 @@ async function batchSetCategory(openid, payload) {
   const categoryId = cleanText(payload.categoryId, 80)
   const category = await getDocument('categories', categoryId)
   if (!category || category.familyId !== chef.familyId) throw Object.assign(new Error('分类不存在'), { code: 'NOT_FOUND' })
-  if (category.isDefault) throw Object.assign(new Error('“未分类”由系统自动管理'), { code: 'INVALID_INPUT' })
+  if (category.systemType === 'uncategorized') throw Object.assign(new Error('“未分类”由系统自动管理'), { code: 'INVALID_INPUT' })
   const selectedIds = normalizeDishSelection(payload.dishIds)
   const selectedSet = new Set(selectedIds)
   const versions = payload.versions && typeof payload.versions === 'object' ? payload.versions : {}
@@ -270,20 +414,24 @@ async function batchSetCategory(openid, payload) {
   const transaction = await db.startTransaction()
   try {
     const result = await transaction.collection('dishes').where({ familyId: chef.familyId }).limit(100).get()
-    const dishes = result.data.filter(dish => dish.isPreset)
+    const dishes = result.data.filter(dish => dish.enabled !== false && !dish.deletedAt)
     const dishMap = new Map(dishes.map(dish => [dish._id, dish]))
     if (selectedIds.some(id => !dishMap.has(id))) throw Object.assign(new Error('批量归类包含不存在的菜品'), { code: 'INVALID_INPUT' })
+    if (selectedIds.some(id => dishMap.get(id).isSystemDish && dishMap.get(id).categoryId !== categoryId)) {
+      throw Object.assign(new Error('系统菜品不能移动分类'), { code: 'INVALID_INPUT' })
+    }
+    dishes.filter(dish => dish.isSystemDish && dish.categoryId === categoryId).forEach(dish => selectedSet.add(dish._id))
     const affected = dishes.filter(dish => dish.categoryId === categoryId || selectedSet.has(dish._id))
     if (affected.some(dish => Number(versions[dish._id]) !== Number(dish.version))) {
       throw Object.assign(new Error('菜品库存或分类已经变化，请刷新后重试'), { code: 'CONFLICT' })
     }
     const now = db.serverDate()
     const movingIn = affected.filter(dish => selectedSet.has(dish._id) && dish.categoryId !== categoryId)
-    const movingOut = affected.filter(dish => !selectedSet.has(dish._id) && dish.categoryId === categoryId)
+    const movingOut = affected.filter(dish => !dish.isSystemDish && !selectedSet.has(dish._id) && dish.categoryId === categoryId)
     const updated = await updateDishCategories(transaction, chef.familyId, movingIn, categoryId, now)
       + await updateDishCategories(transaction, chef.familyId, movingOut, defaultCategory._id, now)
     await transaction.commit()
-    return { categoryId, selectedCount: selectedIds.length, updated }
+    return { categoryId, selectedCount: selectedSet.size, updated }
   } catch (error) {
     await transaction.rollback().catch(() => {})
     throw error
@@ -291,7 +439,7 @@ async function batchSetCategory(openid, payload) {
 }
 
 /**
- * 修改预置菜品的分类和库存，版本号用于避免并发覆盖。
+ * 新增自定义菜品或修改已有菜品的分类和库存。
  * @param {string} openid 厨师微信标识
  * @param {object} payload 菜品表单
  * @returns {Promise<object>} 菜品标识与版本
@@ -299,18 +447,93 @@ async function batchSetCategory(openid, payload) {
 async function saveDish(openid, payload) {
   const chef = await requireUser(openid, 'chef')
   const dishId = cleanText(payload.dishId, 80)
-  if (!dishId) throw Object.assign(new Error('菜品由系统初始化，不能手动新增'), { code: 'INVALID_INPUT' })
+  if (!dishId) {
+    const name = cleanText(payload.name, 30)
+    if (!name) throw Object.assign(new Error('请输入菜品名称'), { code: 'INVALID_INPUT' })
+    const defaultCategory = await ensureDefaultCategory(chef.familyId)
+    const normalized = normalizeDishSettings({ ...payload, categoryId: defaultCategory._id })
+    const existing = await db.collection('dishes').where({ familyId: chef.familyId }).limit(100).get()
+    const sameName = existing.data.find(dish => String(dish.name).trim().toLowerCase() === name.toLowerCase())
+    if (sameName && sameName.enabled !== false && !sameName.deletedAt) {
+      throw Object.assign(new Error('已经有同名菜品'), { code: 'CONFLICT' })
+    }
+    const now = db.serverDate()
+    if (sameName) {
+      await db.collection('dishes').doc(sameName._id).update({
+        data: { name, ...normalized, enabled: true, deletedAt: null, version: _.inc(1), updatedAt: now }
+      })
+      return { _id: sameName._id, version: Number(sameName.version || 0) + 1 }
+    }
+    const result = await db.collection('dishes').add({
+      data: {
+        familyId: chef.familyId,
+        name,
+        isPreset: false,
+        categoryId: defaultCategory._id,
+        description: '',
+        imageFileId: '',
+        priceCents: 0,
+        specs: [],
+        ...normalized,
+        enabled: true,
+        sort: Date.now(),
+        version: 1,
+        createdAt: now,
+        updatedAt: now
+      }
+    })
+    return { _id: result._id, version: 1 }
+  }
   const normalized = normalizeDishSettings(payload)
   const category = await getDocument('categories', normalized.categoryId)
   if (!category || category.familyId !== chef.familyId) throw Object.assign(new Error('菜品分类不存在'), { code: 'INVALID_INPUT' })
   const dish = await getDocument('dishes', dishId)
-  if (!dish || dish.familyId !== chef.familyId || !dish.isPreset) throw Object.assign(new Error('菜品不存在'), { code: 'NOT_FOUND' })
+  if (!dish || dish.familyId !== chef.familyId || dish.enabled === false || dish.deletedAt) throw Object.assign(new Error('菜品不存在'), { code: 'NOT_FOUND' })
+  if (dish.isSystemDish) throw Object.assign(new Error('系统菜品不能修改'), { code: 'INVALID_INPUT' })
   if (Number(payload.version) !== Number(dish.version)) throw Object.assign(new Error('菜品已被修改，请刷新后重试'), { code: 'CONFLICT' })
   const update = await db.collection('dishes').where({ _id: dish._id, familyId: chef.familyId, version: dish.version }).update({
     data: { ...normalized, enabled: true, version: _.inc(1), updatedAt: db.serverDate() }
   })
   if (!update.stats.updated) throw Object.assign(new Error('菜品已被修改，请刷新后重试'), { code: 'CONFLICT' })
   return { _id: dish._id, version: dish.version + 1 }
+}
+
+/**
+ * 删除“未分类”中的菜品，并从尚未使用的星期菜单中移除。
+ * @param {string} openid 厨师微信标识
+ * @param {object} payload 菜品标识和版本
+ * @returns {Promise<object>} 删除结果
+ */
+async function deleteDish(openid, payload) {
+  const chef = await requireUser(openid, 'chef')
+  const dish = await getDocument('dishes', cleanText(payload.dishId, 80))
+  const defaultCategory = await ensureDefaultCategory(chef.familyId)
+  if (!dish || dish.familyId !== chef.familyId || dish.enabled === false || dish.deletedAt) throw Object.assign(new Error('菜品不存在'), { code: 'NOT_FOUND' })
+  if (dish.categoryId !== defaultCategory._id || dish.isSystemDish) {
+    throw Object.assign(new Error('只能删除“未分类”中的菜品'), { code: 'INVALID_INPUT' })
+  }
+  if (Number(payload.version) !== Number(dish.version)) throw Object.assign(new Error('菜品已被修改，请刷新后重试'), { code: 'CONFLICT' })
+  const transaction = await db.startTransaction()
+  try {
+    const now = db.serverDate()
+    const updated = await transaction.collection('dishes').where({
+      _id: dish._id,
+      familyId: chef.familyId,
+      version: dish.version
+    }).update({ data: { enabled: false, deletedAt: now, version: _.inc(1), updatedAt: now } })
+    if (!updated.stats.updated) throw Object.assign(new Error('菜品已被修改，请刷新后重试'), { code: 'CONFLICT' })
+    const meals = await transaction.collection('meal_menus').where({ familyId: chef.familyId, weekly: true }).limit(100).get()
+    for (const meal of meals.data.filter(item => (item.dishIds || []).includes(dish._id))) {
+      await transaction.collection('meal_menus').doc(meal._id).update({
+        data: { dishIds: meal.dishIds.filter(id => id !== dish._id), version: _.inc(1), updatedAt: now }
+      })
+    }
+    await transaction.commit()
+    return { dishId: dish._id }
+  } catch (error) {
+    await transaction.rollback().catch(() => {})
+    throw error
+  }
 }
 
 /**
@@ -335,18 +558,24 @@ async function saveMeal(openid, payload) {
   if (!meal || meal.familyId !== chef.familyId || !meal.weekly) throw Object.assign(new Error('星期菜单不存在'), { code: 'NOT_FOUND' })
   const weekday = Number(meal.weekday)
   assertWeeklyMenu(weekday)
+  assertMealType(meal.mealType)
   const dishIds = [...new Set(Array.isArray(payload.dishIds) ? payload.dishIds.map(id => cleanText(id, 80)).filter(Boolean) : [])]
-  if (dishIds.length > 60) throw Object.assign(new Error('每天最多选择 60 道菜'), { code: 'INVALID_INPUT' })
+  if (dishIds.length > 60) throw Object.assign(new Error('每餐最多选择 60 道菜'), { code: 'INVALID_INPUT' })
   const dishes = await getDishesByIds(chef.familyId, dishIds)
-  if (dishes.length !== dishIds.length || dishes.some(dish => !dish.enabled || !dish.isPreset)) {
+  const [defaultCategory, stapleCategory] = await Promise.all([
+    ensureDefaultCategory(chef.familyId),
+    ensureStapleCategory(chef.familyId)
+  ])
+  if (dishes.length !== dishIds.length) {
     throw Object.assign(new Error('菜单中包含不可用菜品'), { code: 'INVALID_INPUT' })
   }
+  assertMealDishCategories(dishes, defaultCategory._id, stapleCategory._id)
   if (Number(payload.version) !== Number(meal.version)) throw Object.assign(new Error('菜单已被修改，请刷新后重试'), { code: 'CONFLICT' })
   const update = await db.collection('meal_menus').where({ _id: meal._id, familyId: chef.familyId, version: meal.version }).update({
     data: { dishIds, version: _.inc(1), updatedAt: db.serverDate() }
   })
   if (!update.stats.updated) throw Object.assign(new Error('菜单已被修改，请刷新后重试'), { code: 'CONFLICT' })
-  return { _id: meal._id, weekday, version: meal.version + 1 }
+  return { _id: meal._id, weekday, mealType: meal.mealType, version: meal.version + 1 }
 }
 
 /**
@@ -360,16 +589,20 @@ async function openMeals(openid, payload) {
   const date = cleanText(payload.startDate, 10)
   const weekday = weekdayOf(date)
   const menus = await ensureWeeklyMenus(diner.familyId)
-  const meal = menus.find(item => Number(item.weekday) === weekday)
-  if (!meal || !(meal.dishIds || []).length) return []
-  const dishes = await getDishesByIds(diner.familyId, meal.dishIds)
+  const dayMenus = menus.filter(item => Number(item.weekday) === weekday)
+  const dishIds = dayMenus.flatMap(meal => meal.dishIds || [])
+  const [dishes, categoriesResult] = await Promise.all([
+    getDishesByIds(diner.familyId, dishIds),
+    db.collection('categories').where({ familyId: diner.familyId }).orderBy('sort', 'asc').get()
+  ])
   const dishMap = Object.fromEntries(dishes.map(dish => [dish._id, dish]))
-  return [{
+  const uncategorized = categoriesResult.data.find(category => category.systemType === 'uncategorized')
+  return dayMenus.map(meal => ({
     ...meal,
     date,
-    mealType: 'day',
-    dishes: meal.dishIds.map(id => dishMap[id]).filter(dish => dish && dish.enabled)
-  }]
+    categories: categoriesResult.data.filter(category => category.systemType !== 'uncategorized'),
+    dishes: meal.dishIds.map(id => dishMap[id]).filter(dish => dish && dish.enabled && !dish.deletedAt && (!uncategorized || dish.categoryId !== uncategorized._id))
+  }))
 }
 
 /**
@@ -382,17 +615,22 @@ async function mealDetail(openid, payload) {
   const user = await requireUser(openid)
   const meal = await getDocument('meal_menus', cleanText(payload.mealMenuId, 80))
   if (!meal || meal.familyId !== user.familyId || !meal.weekly) throw Object.assign(new Error('星期菜单不存在'), { code: 'NOT_FOUND' })
+  assertMealType(meal.mealType)
   const date = cleanText(payload.date, 10)
   if (user.role === 'diner' && weekdayOf(date) !== Number(meal.weekday)) {
     throw Object.assign(new Error('日期与星期菜单不一致'), { code: 'INVALID_INPUT' })
   }
-  const dishes = await getDishesByIds(user.familyId, meal.dishIds || [])
+  const [dishes, categoriesResult] = await Promise.all([
+    getDishesByIds(user.familyId, meal.dishIds || []),
+    db.collection('categories').where({ familyId: user.familyId }).orderBy('sort', 'asc').get()
+  ])
   const dishMap = Object.fromEntries(dishes.map(dish => [dish._id, dish]))
+  const uncategorized = categoriesResult.data.find(category => category.systemType === 'uncategorized')
   return {
     ...meal,
     date,
-    mealType: 'day',
-    dishes: meal.dishIds.map(id => dishMap[id]).filter(dish => dish && dish.enabled)
+    categories: categoriesResult.data.filter(category => category.systemType !== 'uncategorized'),
+    dishes: meal.dishIds.map(id => dishMap[id]).filter(dish => dish && dish.enabled && !dish.deletedAt && (!uncategorized || dish.categoryId !== uncategorized._id))
   }
 }
 
@@ -411,9 +649,11 @@ exports.main = async (event = {}, context = {}) => {
     switch (event.action) {
       case 'chefCatalog': data = await chefCatalog(openid); break
       case 'saveCategory': data = await saveCategory(openid, payload); break
+      case 'saveCategoryOrder': data = await saveCategoryOrder(openid, payload); break
       case 'deleteCategory': data = await deleteCategory(openid, payload); break
       case 'batchSetCategory': data = await batchSetCategory(openid, payload); break
       case 'saveDish': data = await saveDish(openid, payload); break
+      case 'deleteDish': data = await deleteDish(openid, payload); break
       case 'chefMeals': data = await chefMeals(openid, payload); break
       case 'saveMeal': data = await saveMeal(openid, payload); break
       case 'openMeals': data = await openMeals(openid, payload); break

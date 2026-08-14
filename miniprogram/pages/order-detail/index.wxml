@@ -3,7 +3,7 @@
   <block wx:else>
     <view class="status-card card status-{{order.status}}">
       <text class="status-emoji">{{order.status === 'pending' ? '⏳' : order.status === 'confirmed' ? '👌' : order.status === 'cooking' ? '🔥' : order.status === 'ready' ? '🔔' : order.status === 'completed' ? '😋' : '🚫'}}</text>
-      <view><text class="status-title">{{order.statusLabel}}</text><text class="status-copy">{{order.mealDate}} · {{order.weekdayLabel}}{{role === 'chef' ? ' · ' + order.dinerName : ''}}</text></view>
+      <view><text class="status-title">{{order.statusLabel}}</text><text class="status-copy">{{order.mealDate}} · {{order.weekdayLabel}} {{order.mealTypeLabel}}{{role === 'chef' ? ' · ' + order.dinerName : ''}}</text></view>
     </view>
 
     <view class="section-title"><text>点餐内容</text></view>

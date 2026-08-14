@@ -1,6 +1,6 @@
 const cloud = require('wx-server-sdk')
 const crypto = require('crypto')
-const { assertTransition, validateSelectedSpecs, normalizeItems, inventoryDeltas } = require('./domain')
+const { MEAL_TYPES, assertOrderWindow, assertTransition, assertStapleSelection, validateSelectedSpecs, normalizeItems, inventoryDeltas } = require('./domain')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -28,23 +28,29 @@ async function requireUser(openid, role) {
 }
 
 /**
- * 获取或创建指定星期的固定菜单。
+ * 获取或创建指定星期和餐别的固定菜单。
  * @param {string} familyId 家庭标识
  * @param {number} weekday 星期序号
- * @returns {Promise<object>} 星期菜单
+ * @param {string} mealType 餐别
+ * @returns {Promise<object>} 星期餐别菜单
  */
-async function ensureWeeklyMenu(familyId, weekday) {
-  const result = await db.collection('meal_menus').where({ familyId, weekly: true, weekday }).limit(1).get()
+async function ensureWeeklyMenu(familyId, weekday, mealType) {
+  const mealConfig = MEAL_TYPES[mealType]
+  if (!mealConfig) throw Object.assign(new Error('餐别不正确'), { code: 'INVALID_INPUT' })
+  const result = await db.collection('meal_menus').where({ familyId, weekly: true, weekday, mealType }).limit(1).get()
   if (result.data.length) return result.data[0]
   const familyKey = crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 20)
-  const menuId = `weekly_${familyKey}_${weekday}`
+  const menuId = `weekly_${familyKey}_${weekday}_${mealType}`
+  const noStapleDishId = `no_staple_${crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 24)}`
   const now = db.serverDate()
   const data = {
     familyId,
     weekly: true,
     weekday,
     weekdayLabel: WEEKDAY_LABELS[weekday],
-    dishIds: [],
+    mealType,
+    mealTypeLabel: mealConfig.label,
+    dishIds: [noStapleDishId],
     status: 'open',
     version: 1,
     createdAt: now,
@@ -52,6 +58,10 @@ async function ensureWeeklyMenu(familyId, weekday) {
   }
   await db.collection('meal_menus').doc(menuId).set({ data })
   return { _id: menuId, ...data }
+}
+
+async function ensureDayMenus(familyId, weekday) {
+  return Promise.all(Object.keys(MEAL_TYPES).map(mealType => ensureWeeklyMenu(familyId, weekday, mealType)))
 }
 
 async function getDishesByIds(familyId, ids) {
@@ -79,6 +89,9 @@ function snapshotItems(rawItems, dishes, meal, oldReserved = {}) {
       throw Object.assign(new Error(`${dish.name}库存不足，目前最多可选 ${available} 份`), { code: 'CONFLICT' })
     }
     const selectedSpecs = validateSelectedSpecs(dish.specs || [], item.selectedSpecs)
+    if (dish.systemDishType === 'no_staple' && item.quantity !== 1) {
+      throw Object.assign(new Error('“不要主食”只能选择 1 份'), { code: 'INVALID_INPUT' })
+    }
     const subtotalCents = dish.priceCents * item.quantity
     totalCents += subtotalCents
     return {
@@ -93,6 +106,9 @@ function snapshotItems(rawItems, dishes, meal, oldReserved = {}) {
       note: item.note
     }
   })
+  const stapleCategoryId = `staple_${crypto.createHash('sha256').update(meal.familyId).digest('hex').slice(0, 24)}`
+  const uncategorizedId = `uncat_${crypto.createHash('sha256').update(meal.familyId).digest('hex').slice(0, 24)}`
+  assertStapleSelection(rawItems, dishes, stapleCategoryId, uncategorizedId)
   return { items, totalCents }
 }
 
@@ -103,7 +119,7 @@ async function createOrderNotification(transaction, familyId, chefId, orderId, d
       recipientId: chefId,
       type: 'new_order',
       title: '收到一份新订单',
-      content: `${dinerName} 点了 ${meal.date} 的家庭餐`,
+      content: `${dinerName} 点了 ${meal.date} 的${meal.mealTypeLabel || '家庭餐'}`,
       targetId: orderId,
       read: false,
       createdAt: db.serverDate()
@@ -130,7 +146,7 @@ async function sendChefSubscription(familyId, orderId, dinerName, meal, items) {
         // 微信模板 461：预约人、预约时间、预约项目、订单编号、备注。
         name1: { value: dinerName.slice(0, 10) },
         date3: { value: meal.date },
-        thing13: { value: `${meal.weekdayLabel || '当天'}菜单点餐`.slice(0, 20) },
+        thing13: { value: `${meal.weekdayLabel || '当天'}${meal.mealTypeLabel || ''}点餐`.slice(0, 20) },
         character_string54: { value: orderId.slice(0, 32) },
         thing7: { value: `共${items.reduce((sum, item) => sum + item.quantity, 0)}份菜品`.slice(0, 20) }
       }
@@ -157,7 +173,7 @@ async function sendChefSubscription(familyId, orderId, dinerName, meal, items) {
 }
 
 /**
- * 创建或修改食客在某一天的唯一订单，并同步占用库存。
+ * 创建或修改食客在某一天某一餐的唯一订单，并同步占用库存。
  * @param {string} openid 食客微信标识
  * @param {object} payload 星期菜单、日期、条目、幂等键和版本
  * @returns {Promise<object>} 订单摘要
@@ -170,8 +186,6 @@ async function submitOrder(openid, payload) {
   if (!clientRequestId || !/^\d{4}-\d{2}-\d{2}$/.test(orderDate)) {
     throw Object.assign(new Error('缺少订单日期或请求编号'), { code: 'INVALID_INPUT' })
   }
-  const chinaToday = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  if (orderDate < chinaToday) throw Object.assign(new Error('过去的日期不能再点餐'), { code: 'MENU_CLOSED' })
 
   const duplicate = await db.collection('orders').where({ familyId: diner.familyId, dinerId: openid, clientRequestId }).limit(1).get()
   if (duplicate.data.length) {
@@ -180,17 +194,23 @@ async function submitOrder(openid, payload) {
   }
 
   const meal = await getDocument('meal_menus', mealMenuId)
+  const window = assertOrderWindow(orderDate, meal && meal.mealType)
   const orderDateValue = new Date(`${orderDate}T00:00:00Z`)
   if (Number.isNaN(orderDateValue.getTime()) || orderDateValue.toISOString().slice(0, 10) !== orderDate) {
     throw Object.assign(new Error('订单日期不正确'), { code: 'INVALID_INPUT' })
   }
   const day = orderDateValue.getUTCDay() || 7
-  if (!meal || meal.familyId !== diner.familyId || !meal.weekly || Number(meal.weekday) !== day) {
+  if (!meal || meal.familyId !== diner.familyId || !meal.weekly || !MEAL_TYPES[meal.mealType] || Number(meal.weekday) !== day) {
     throw Object.assign(new Error('这天的菜单不存在'), { code: 'MENU_CLOSED' })
   }
   const rawItems = normalizeItems(payload.items)
   const note = cleanText(payload.note, 200)
-  const existingResult = await db.collection('orders').where({ familyId: diner.familyId, dinerId: openid, mealDate: orderDate }).limit(1).get()
+  const existingResult = await db.collection('orders').where({
+    familyId: diner.familyId,
+    dinerId: openid,
+    mealDate: orderDate,
+    mealType: meal.mealType
+  }).limit(1).get()
   const existing = existingResult.data[0]
   if (existing && existing.status !== 'pending') throw Object.assign(new Error('厨师已经确认，订单不能再修改'), { code: 'ORDER_LOCKED' })
   if (existing && Number(payload.version) !== Number(existing.version)) {
@@ -201,12 +221,12 @@ async function submitOrder(openid, payload) {
   const transaction = await db.startTransaction()
   let orderId = existing
     ? existing._id
-    : `order_${crypto.createHash('sha256').update(`${diner.familyId}|${openid}|${orderDate}`).digest('hex').slice(0, 24)}`
+    : `order_${crypto.createHash('sha256').update(`${diner.familyId}|${openid}|${orderDate}|${meal.mealType}`).digest('hex').slice(0, 24)}`
   let version = existing ? existing.version + 1 : 1
   let committedSnapshot
   try {
     const latestMeal = (await transaction.collection('meal_menus').doc(mealMenuId).get()).data
-    if (!latestMeal || !latestMeal.weekly || latestMeal.familyId !== diner.familyId || Number(latestMeal.weekday) !== day) {
+    if (!latestMeal || !latestMeal.weekly || latestMeal.familyId !== diner.familyId || latestMeal.mealType !== meal.mealType || Number(latestMeal.weekday) !== day) {
       throw Object.assign(new Error('这天的菜单不存在'), { code: 'MENU_CLOSED' })
     }
     const latestDishes = []
@@ -238,21 +258,33 @@ async function submitOrder(openid, payload) {
         status: 'pending',
         version: existing.version
       }).update({
-        data: { items: latestSnapshot.items, totalCents: latestSnapshot.totalCents, note, clientRequestId, version: _.inc(1), updatedAt: now }
-      })
-      if (!update.stats.updated) throw Object.assign(new Error('订单已被修改，请刷新后重试'), { code: 'CONFLICT' })
-      await transaction.collection('notifications').add({
         data: {
-          familyId: diner.familyId,
-          recipientId: family.chefId,
-          type: 'order_updated',
-          title: '食客修改了订单',
-          content: `${diner.displayName} 修改了 ${orderDate} 的点餐内容`,
-          targetId: existing._id,
-          read: false,
-          createdAt: now
+          items: latestSnapshot.items,
+          totalCents: latestSnapshot.totalCents,
+          note,
+          clientRequestId,
+          deadlineAt: window.deadlineAt,
+          reminderDueAt: window.daysAhead > 0 ? window.reminderAt : existing.reminderDueAt || null,
+          reminderPending: window.daysAhead > 0,
+          version: _.inc(1),
+          updatedAt: now
         }
       })
+      if (!update.stats.updated) throw Object.assign(new Error('订单已被修改，请刷新后重试'), { code: 'CONFLICT' })
+      if (window.daysAhead === 0) {
+        await transaction.collection('notifications').add({
+          data: {
+            familyId: diner.familyId,
+            recipientId: family.chefId,
+            type: 'order_updated',
+            title: '食客修改了订单',
+            content: `${diner.displayName} 修改了 ${orderDate} ${meal.mealTypeLabel}的点餐内容`,
+            targetId: existing._id,
+            read: false,
+            createdAt: now
+          }
+        })
+      }
     } else {
       await transaction.collection('orders').add({
         data: {
@@ -262,7 +294,8 @@ async function submitOrder(openid, payload) {
           dinerName: diner.displayName,
           mealMenuId,
           mealDate: orderDate,
-          mealType: 'day',
+          mealType: latestMeal.mealType,
+          mealTypeLabel: latestMeal.mealTypeLabel,
           weekday: latestMeal.weekday,
           weekdayLabel: latestMeal.weekdayLabel,
           items: latestSnapshot.items,
@@ -271,19 +304,27 @@ async function submitOrder(openid, payload) {
           status: 'pending',
           cancelReason: '',
           clientRequestId,
+          deadlineAt: window.deadlineAt,
+          reminderDueAt: window.daysAhead > 0 ? window.reminderAt : null,
+          reminderPending: window.daysAhead > 0,
+          reminderSentAt: null,
           version: 1,
           createdAt: now,
           updatedAt: now
         }
       })
-      await createOrderNotification(transaction, diner.familyId, family.chefId, orderId, diner.displayName, { ...latestMeal, date: orderDate })
+      if (window.daysAhead === 0) {
+        await createOrderNotification(transaction, diner.familyId, family.chefId, orderId, diner.displayName, { ...latestMeal, date: orderDate })
+      }
     }
     await transaction.commit()
   } catch (error) {
     await transaction.rollback().catch(() => {})
     throw error
   }
-  if (!existing) await sendChefSubscription(diner.familyId, orderId, diner.displayName, { ...meal, date: orderDate }, committedSnapshot.items)
+  if (!existing && window.daysAhead === 0) {
+    await sendChefSubscription(diner.familyId, orderId, diner.displayName, { ...meal, date: orderDate }, committedSnapshot.items)
+  }
   return { _id: orderId, status: 'pending', version, totalCents: committedSnapshot.totalCents, idempotent: false }
 }
 
@@ -345,7 +386,7 @@ async function cancelMyOrder(openid, payload) {
   try {
     await restoreOrderStock(transaction, order)
     const update = await transaction.collection('orders').where({ _id: order._id, status: 'pending', version: order.version }).update({
-      data: { status: 'cancelled', cancelReason: '食客取消', version: _.inc(1), updatedAt: db.serverDate() }
+      data: { status: 'cancelled', cancelReason: '食客取消', reminderPending: false, version: _.inc(1), updatedAt: db.serverDate() }
     })
     if (!update.stats.updated) throw Object.assign(new Error('订单状态已经变化'), { code: 'CONFLICT' })
     await transaction.collection('notifications').add({
@@ -373,7 +414,7 @@ function specText(selectedSpecs) {
 }
 
 /**
- * 返回厨师厨房看板，按当天星期菜单聚合人数、份数、菜品规格和备注。
+ * 返回厨师厨房看板，按当天早中晚菜单聚合人数、份数、菜品规格和备注。
  * @param {string} openid 厨师微信标识
  * @param {object} payload 日期范围
  * @returns {Promise<Array<object>>} 厨房当天汇总
@@ -386,11 +427,11 @@ async function chefKitchen(openid, payload) {
     throw Object.assign(new Error('请选择同一天查看厨房订单'), { code: 'INVALID_INPUT' })
   }
   const weekday = new Date(`${startDate}T00:00:00Z`).getUTCDay() || 7
-  const [meal, ordersResult] = await Promise.all([
-    ensureWeeklyMenu(chef.familyId, weekday),
+  const [meals, ordersResult] = await Promise.all([
+    ensureDayMenus(chef.familyId, weekday),
     db.collection('orders').where({ familyId: chef.familyId, mealDate: _.gte(startDate).and(_.lte(endDate)) }).orderBy('createdAt', 'asc').limit(500).get()
   ])
-  return [meal].map(meal => {
+  return meals.map(meal => {
     const orders = ordersResult.data.filter(order => order.mealMenuId === meal._id)
     const activeOrders = orders.filter(order => order.status !== 'cancelled')
     const dishMap = new Map()
@@ -405,7 +446,6 @@ async function chefKitchen(openid, payload) {
     return {
       ...meal,
       date: startDate,
-      mealType: 'day',
       dinerCount: activeOrders.length,
       pendingCount: activeOrders.filter(order => order.status === 'pending').length,
       totalQuantity,
@@ -437,7 +477,13 @@ async function chefSetOrderStatus(openid, payload) {
   try {
     if (targetStatus === 'cancelled') await restoreOrderStock(transaction, order)
     const update = await transaction.collection('orders').where({ _id: order._id, familyId: chef.familyId, status: order.status, version: order.version }).update({
-      data: { status: targetStatus, cancelReason: targetStatus === 'cancelled' ? cancelReason || '厨师取消' : '', version: _.inc(1), updatedAt: db.serverDate() }
+      data: {
+        status: targetStatus,
+        cancelReason: targetStatus === 'cancelled' ? cancelReason || '厨师取消' : '',
+        reminderPending: ['cancelled', 'completed'].includes(targetStatus) ? false : Boolean(order.reminderPending),
+        version: _.inc(1),
+        updatedAt: db.serverDate()
+      }
     })
     if (!update.stats.updated) throw Object.assign(new Error('订单状态已经变化'), { code: 'CONFLICT' })
     await transaction.collection('notifications').add({
@@ -482,7 +528,12 @@ async function chefBatchStatus(openid, payload) {
     const now = db.serverDate()
     for (const order of candidates.data) {
       await transaction.collection('orders').doc(order._id).update({
-        data: { status: targetStatus, version: _.inc(1), updatedAt: now }
+        data: {
+          status: targetStatus,
+          reminderPending: targetStatus === 'completed' ? false : Boolean(order.reminderPending),
+          version: _.inc(1),
+          updatedAt: now
+        }
       })
       await transaction.collection('notifications').add({
         data: {
@@ -532,6 +583,57 @@ async function readNotifications(openid, payload) {
 }
 
 /**
+ * 处理提前下单的到点提醒；定时触发器在目标时间和五分钟后补跑，并用 reminderPending 防重。
+ * @returns {Promise<object>} 本轮提醒结果
+ */
+async function processScheduledReminders() {
+  const now = new Date()
+  const result = await db.collection('orders').where({ reminderPending: true, reminderDueAt: _.lte(now) }).limit(100).get()
+  let sent = 0
+  for (const order of result.data) {
+    if (order.status === 'cancelled' || order.status === 'completed') {
+      await db.collection('orders').doc(order._id).update({ data: { reminderPending: false, updatedAt: db.serverDate() } })
+      continue
+    }
+    const family = await getDocument('families', order.familyId)
+    if (!family || !family.chefId) continue
+    const transaction = await db.startTransaction()
+    try {
+      const updated = await transaction.collection('orders').where({ _id: order._id, reminderPending: true }).update({
+        data: { reminderPending: false, reminderSentAt: db.serverDate(), updatedAt: db.serverDate() }
+      })
+      if (!updated.stats.updated) {
+        await transaction.rollback()
+        continue
+      }
+      await transaction.collection('notifications').add({
+        data: {
+          familyId: order.familyId,
+          recipientId: family.chefId,
+          type: 'advance_order_reminder',
+          title: `${order.mealTypeLabel || '餐次'}备餐提醒`,
+          content: `${order.dinerName}预订了今天的${order.mealTypeLabel || '餐食'}`,
+          targetId: order._id,
+          read: false,
+          createdAt: db.serverDate()
+        }
+      })
+      await transaction.commit()
+      await sendChefSubscription(order.familyId, order._id, order.dinerName, {
+        date: order.mealDate,
+        weekdayLabel: order.weekdayLabel,
+        mealTypeLabel: order.mealTypeLabel
+      }, order.items || [])
+      sent += 1
+    } catch (error) {
+      await transaction.rollback().catch(() => {})
+      console.error('scheduled reminder failed', order._id, error)
+    }
+  }
+  return { checked: result.data.length, sent }
+}
+
+/**
  * 订单云函数统一入口。
  * @param {object} event 请求动作与数据
  * @param {object} context 云函数调用上下文
@@ -539,8 +641,12 @@ async function readNotifications(openid, payload) {
  */
 exports.main = async (event = {}, context = {}) => {
   const requestId = context.requestId || crypto.randomUUID()
-  const { OPENID: openid } = cloud.getWXContext()
   try {
+    const { OPENID: openid } = cloud.getWXContext()
+    if (event.Type === 'Timer') {
+      if (openid) throw Object.assign(new Error('客户端不能触发定时提醒'), { code: 'FORBIDDEN' })
+      return ok(await processScheduledReminders(), requestId)
+    }
     const payload = event.payload || {}
     let data
     switch (event.action) {

@@ -1,13 +1,14 @@
 <view class="edit-page">
-  <view class="meal-hero card"><text class="meal-hero-emoji">🥘</text><view><text class="meal-hero-title">{{name}}</text><text class="meal-hero-copy">设置菜品所属分类和当前可用库存</text></view></view>
+  <view class="meal-hero card"><text class="meal-hero-emoji">🥘</text><view><text class="meal-hero-title">{{isNew ? '添加菜品' : name}}</text><text class="meal-hero-copy">{{isNew ? '新菜品会先放入未分类' : '设置菜品所属分类和当前可用库存'}}</text></view></view>
 
   <view class="form-card card">
-    <view class="field"><text class="field-label">分类</text><picker range="{{categories}}" range-key="name" value="{{categoryIndex}}" bindchange="onCategoryChange"><view class="picker-field">{{categories[categoryIndex].name || '请选择分类'}} <text>⌄</text></view></picker></view>
+    <view wx:if="{{isNew}}" class="field"><text class="field-label">菜品名称</text><input class="input" value="{{name}}" maxlength="30" bindinput="onName" placeholder="请输入菜品名称" /></view>
+    <view class="field"><text class="field-label">分类</text><picker disabled="{{isNew}}" range="{{categories}}" range-key="name" value="{{categoryIndex}}" bindchange="onCategoryChange"><view class="picker-field">{{categories[categoryIndex].name || '请选择分类'}} <text wx:if="{{!isNew}}">⌄</text></view></picker></view>
     <view class="field"><text class="field-label">库存类型</text><radio-group class="stock-modes" bindchange="onStockMode"><label class="stock-mode {{!stockUnlimited ? 'selected' : ''}}"><radio value="limited" checked="{{!stockUnlimited}}" color="#55a66f" />有限库存</label><label class="stock-mode {{stockUnlimited ? 'selected' : ''}}"><radio value="unlimited" checked="{{stockUnlimited}}" color="#55a66f" />无限库存</label></radio-group></view>
     <view wx:if="{{!stockUnlimited}}" class="field"><text class="field-label">库存数量</text><input class="input" type="number" value="{{stock}}" bindinput="onStock" placeholder="0" /></view>
     <view wx:else class="unlimited-tip">已选择无限库存，家庭成员选择份数时不受库存数量限制。</view>
   </view>
 
   <view class="card stock-tip">库存为 0 时，家庭成员仍能看到菜品，但不能选择。有限库存会在下单时扣减，取消订单后自动归还。</view>
-  <button class="primary-btn save-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存设置</button>
+  <button class="primary-btn save-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="save">{{isNew ? '添加菜品' : '保存设置'}}</button>
 </view>

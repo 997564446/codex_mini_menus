@@ -1,9 +1,10 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { hashSecret, safeEqual } = require('../cloudfunctions/identity/domain')
-const { normalizeDishSettings, normalizeDishSelection, assertWeeklyMenu } = require('../cloudfunctions/menu/domain')
+const { normalizeDishSettings, normalizeDishSelection, assertWeeklyMenu, assertMealType, assertMealDishCategories, normalizeCategoryOrder } = require('../cloudfunctions/menu/domain')
 const presetDishes = require('../cloudfunctions/menu/preset-dishes')
-const { assertTransition, validateSelectedSpecs, normalizeItems, inventoryDeltas } = require('../cloudfunctions/order/domain')
+const { assertOrderWindow, assertTransition, assertStapleSelection, validateSelectedSpecs, normalizeItems, inventoryDeltas } = require('../cloudfunctions/order/domain')
+const { mealAvailability } = require('../miniprogram/utils/format')
 
 test('初始化口令摘要可恒定时间比较且不等于明文', () => {
   const digest = hashSecret('family-secret')
@@ -47,6 +48,45 @@ test('星期菜单只接受周一至周日且不硬编码具体菜品', () => {
   assert.throws(() => assertWeeklyMenu(0), /周一到周日/)
 })
 
+test('星期菜单只接受早中晚三种餐别', () => {
+  assert.equal(assertMealType('breakfast').label, '早餐')
+  assert.equal(assertMealType('lunch').deadlineHour, 14)
+  assert.equal(assertMealType('dinner').reminderHour, 17)
+  assert.throws(() => assertMealType('night'), /早餐、中餐或晚餐/)
+})
+
+test('分类拖动顺序拒绝重复和无效分类', () => {
+  assert.deepEqual(normalizeCategoryOrder(['c2', 'c1']), ['c2', 'c1'])
+  assert.throws(() => normalizeCategoryOrder(['c1', 'c1']), /重复分类/)
+  assert.throws(() => normalizeCategoryOrder(['']), /无效/)
+})
+
+test('每餐菜单必须提供主食且不能包含未分类菜品', () => {
+  assert.doesNotThrow(() => assertMealDishCategories([{ enabled: true, categoryId: 'staple' }], 'uncat', 'staple'))
+  assert.throws(() => assertMealDishCategories([{ enabled: true, categoryId: 'dish' }], 'uncat', 'staple'), /至少选择一种主食/)
+  assert.throws(() => assertMealDishCategories([{ enabled: true, categoryId: 'uncat' }], 'uncat', 'staple'), /不可用菜品/)
+})
+
+test('每餐允许提前两天下单并按餐别截止', () => {
+  const beforeBreakfast = Date.parse('2026-08-14T08:59:00+08:00')
+  assert.equal(assertOrderWindow('2026-08-14', 'breakfast', beforeBreakfast).daysAhead, 0)
+  const dinnerWindow = assertOrderWindow('2026-08-16', 'dinner', beforeBreakfast)
+  assert.equal(dinnerWindow.daysAhead, 2)
+  assert.equal(dinnerWindow.deadlineAt.toISOString(), '2026-08-16T13:00:00.000Z')
+  assert.equal(dinnerWindow.reminderAt.toISOString(), '2026-08-16T09:00:00.000Z')
+  assert.throws(() => assertOrderWindow('2026-08-17', 'lunch', beforeBreakfast), /提前 2 天/)
+  assert.throws(() => assertOrderWindow('2026-08-14', 'breakfast', Date.parse('2026-08-14T09:00:00+08:00')), /已截止/)
+  assert.throws(() => assertOrderWindow('2026-08-14', 'lunch', Date.parse('2026-08-14T14:00:00+08:00')), /已截止/)
+  assert.throws(() => assertOrderWindow('2026-08-14', 'dinner', Date.parse('2026-08-14T21:00:00+08:00')), /已截止/)
+})
+
+test('客户端三餐截止展示与服务端规则一致', () => {
+  assert.equal(mealAvailability('2026-08-14', 'breakfast', new Date('2026-08-14T08:59:00+08:00')).closed, false)
+  assert.equal(mealAvailability('2026-08-14', 'breakfast', new Date('2026-08-14T09:00:00+08:00')).closed, true)
+  assert.equal(mealAvailability('2026-08-14', 'lunch', new Date('2026-08-14T13:59:00+08:00')).closed, false)
+  assert.equal(mealAvailability('2026-08-14', 'dinner', new Date('2026-08-14T21:00:00+08:00')).closed, true)
+})
+
 test('初始化菜品完整且不重复', () => {
   assert.equal(presetDishes.length, 51)
   assert.equal(new Set(presetDishes.map(name => name.toLowerCase())).size, 51)
@@ -65,6 +105,13 @@ test('订单条目拒绝重复菜品和越界份数', () => {
   assert.throws(() => normalizeItems([]), /至少选择/)
   assert.throws(() => normalizeItems([{ dishId: 'd1', quantity: 1 }, { dishId: 'd1', quantity: 2 }]), /重复菜品/)
   assert.throws(() => normalizeItems([{ dishId: 'd1', quantity: 21 }]), /数量不正确/)
+})
+
+test('食客订单必须选择主食且不能选择未分类菜品', () => {
+  const dishes = [{ _id: 'staple', categoryId: 'c-staple' }, { _id: 'dish', categoryId: 'c1' }, { _id: 'uncat', categoryId: 'c-uncat' }]
+  assert.doesNotThrow(() => assertStapleSelection([{ dishId: 'staple' }, { dishId: 'dish' }], dishes, 'c-staple', 'c-uncat'))
+  assert.throws(() => assertStapleSelection([{ dishId: 'dish' }], dishes, 'c-staple', 'c-uncat'), /请选择一种主食/)
+  assert.throws(() => assertStapleSelection([{ dishId: 'staple' }, { dishId: 'uncat' }], dishes, 'c-staple', 'c-uncat'), /未分类菜品/)
 })
 
 test('改单库存按有限库存占用差额增减且忽略无限库存', () => {

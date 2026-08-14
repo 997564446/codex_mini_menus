@@ -11,8 +11,8 @@
 
     <view wx:if="{{chefTab === 'dishes'}}">
       <view class="toolbar">
-        <button class="toolbar-btn ghost" bindtap="addCategory">＋ 分类</button>
-        <text class="toolbar-tip">左选分类，右勾菜品</text>
+        <view class="toolbar-actions"><button class="toolbar-btn ghost" bindtap="addCategory">＋ 分类</button><button class="toolbar-btn sort" bindtap="toggleCategorySort">{{categorySortMode ? '完成排序' : '调整顺序'}}</button></view>
+        <text class="toolbar-tip">{{categorySortMode ? '上下拖动自定义分类' : '左选分类，右勾菜品'}}</text>
       </view>
       <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在整理菜品库…</text></view>
       <view wx:elif="{{!dishes.length}}" class="card empty-state">
@@ -20,30 +20,41 @@
       </view>
       <view wx:else class="catalog-layout card">
         <scroll-view class="category-sidebar" scroll-y enhanced show-scrollbar="{{false}}">
-          <view wx:for="{{categories}}" wx:key="_id" class="category-nav {{selectedCategoryId === item._id ? 'active' : ''}}" data-id="{{item._id}}" bindtap="selectCategory">
+          <movable-area wx:if="{{categorySortMode}}" class="category-sort-area" style="height: {{categorySortAreaHeight}}px">
+            <movable-view wx:for="{{customCategories}}" wx:key="_id" class="category-sort-item" direction="vertical" y="{{item.dragY}}" disabled="{{categoryOrderSaving}}" data-id="{{item._id}}" bindchange="onCategoryDrag" bindtouchend="onCategoryDrop">
+              <view class="category-nav sorting"><view class="category-nav-main"><text class="drag-handle">☰</text><text class="category-nav-name">{{item.name}}</text><text class="category-count">{{item.dishCount}}</text></view></view>
+            </movable-view>
+          </movable-area>
+          <block wx:else>
+            <view wx:for="{{customCategories}}" wx:key="_id" class="category-nav {{selectedCategoryId === item._id ? 'active' : ''}}" data-id="{{item._id}}" bindtap="selectCategory">
+              <view class="category-nav-main"><text class="category-nav-name">{{item.name}}</text><text class="category-count">{{item.dishCount}}</text></view>
+              <view class="category-actions" data-id="{{item._id}}" catchtap="manageCategory">···</view>
+            </view>
+          </block>
+          <view wx:for="{{fixedCategories}}" wx:key="_id" class="category-nav fixed {{selectedCategoryId === item._id ? 'active' : ''}}" data-id="{{item._id}}" bindtap="selectCategory">
             <view class="category-nav-main"><text class="category-nav-name">{{item.name}}</text><text class="category-count">{{item.dishCount}}</text></view>
-            <text wx:if="{{!item.isDefault}}" class="category-actions" data-id="{{item._id}}" catchtap="manageCategory">···</text>
           </view>
         </scroll-view>
 
         <view class="category-content">
           <view class="category-content-head">
-            <view><text class="category-title">{{selectedCategoryName}}</text><text class="category-copy">{{selectedCategoryIsDefault ? '尚未归类的菜品' : '仅显示本分类和未分类，本分类排在前面'}}</text></view>
-            <button wx:if="{{!selectedCategoryIsDefault}}" class="category-save" loading="{{categorySaving}}" disabled="{{categorySaving || !categoryDirty}}" bindtap="saveCategoryDishes">保存</button>
+            <view><text class="category-title">{{selectedCategoryName}}</text><text class="category-copy">{{selectedCategoryIsDefault ? '可在这里添加、编辑或删除菜品' : '仅显示本分类和未分类，本分类排在前面'}}</text></view>
+            <button wx:if="{{selectedCategoryIsDefault}}" class="category-save add-dish" bindtap="addDish">＋菜品</button>
+            <button wx:else class="category-save" loading="{{categorySaving}}" disabled="{{categorySaving || !categoryDirty}}" bindtap="saveCategoryDishes">保存</button>
           </view>
           <scroll-view class="category-dish-list" scroll-y enhanced show-scrollbar="{{false}}">
             <view wx:if="{{!categoryDishes.length}}" class="category-empty">这个分类还没有菜品</view>
             <block wx:elif="{{selectedCategoryIsDefault}}">
               <view wx:for="{{categoryDishes}}" wx:key="_id" class="category-dish-row">
                 <view class="category-dish-body"><text class="category-dish-name">{{item.name}}</text><text class="category-dish-meta">库存 {{item.stockText}}</text></view>
-                <text class="stock-link" data-id="{{item._id}}" bindtap="editDish">库存 ›</text>
+                <view class="dish-row-actions"><text class="stock-link" data-id="{{item._id}}" bindtap="editDish">编辑</text><text class="delete-link" data-id="{{item._id}}" bindtap="removeDish">删除</text></view>
               </view>
             </block>
             <checkbox-group wx:else bindchange="onCategoryDishes">
               <view wx:for="{{categoryDishes}}" wx:key="_id" class="category-dish-row {{item.checked ? 'checked' : ''}}">
-                <checkbox value="{{item._id}}" checked="{{item.checked}}" color="#55a66f" />
+                <checkbox value="{{item._id}}" checked="{{item.checked}}" disabled="{{item.isSystemDish}}" color="#55a66f" />
                 <view class="category-dish-body"><text class="category-dish-name">{{item.name}}</text><text class="category-dish-meta">{{item.categoryDisplay}} · 库存 {{item.stockText}}</text></view>
-                <text class="stock-link" data-id="{{item._id}}" catchtap="editDish">库存 ›</text>
+                <text wx:if="{{!item.isSystemDish}}" class="stock-link" data-id="{{item._id}}" catchtap="editDish">库存 ›</text>
               </view>
             </checkbox-group>
           </scroll-view>
@@ -57,11 +68,11 @@
         <text class="empty-emoji">🗓️</text><text class="empty-title">星期菜单还没准备好</text><text class="empty-copy">下拉刷新后再试一次。</text>
       </view>
       <block wx:else>
-        <view wx:for="{{meals}}" wx:key="_id" class="meal-row card" data-id="{{item._id}}" bindtap="editMeal">
+        <view wx:for="{{meals}}" wx:key="_id" class="meal-row card" data-weekday="{{item.weekday}}" bindtap="editMeal">
           <view class="meal-icon">{{item.weekday}}</view>
           <view class="meal-body">
             <text class="meal-title">{{item.weekdayLabel}}菜单</text>
-            <text class="meal-meta">已安排 {{item.dishIds.length}} 道菜</text>
+            <text class="meal-meta">{{item.mealSummary}}</text>
           </view>
           <text class="muted">编辑 ›</text>
         </view>
@@ -77,7 +88,7 @@
     </view>
     <block wx:else>
     <view wx:for="{{orders}}" wx:key="_id" class="order-card card" data-id="{{item._id}}" bindtap="openOrder">
-      <view class="order-head"><text class="order-meal">{{item.mealDate}} · {{item.weekdayLabel}}</text><text class="order-state state-{{item.status}}">{{item.statusLabel}}</text></view>
+      <view class="order-head"><text class="order-meal">{{item.mealDate}} · {{item.weekdayLabel}} {{item.mealTypeLabel}}</text><text class="order-state state-{{item.status}}">{{item.statusLabel}}</text></view>
       <text class="order-dishes">{{item.items[0].name}}{{item.items.length > 1 ? ' 等 ' + item.items.length + ' 道菜' : ''}}</text>
       <view class="order-foot"><text class="muted">查看点餐内容和处理进度</text><text class="price">详情 ›</text></view>
     </view>

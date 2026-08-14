@@ -47,3 +47,28 @@ test('新订单订阅消息使用预约通知模板的五个固定字段', () =>
     assert.doesNotMatch(source, new RegExp(`\\b${obsoleteKey}\\s*:`), `仍在使用旧模板字段 ${obsoleteKey}`)
   }
 })
+
+test('三餐订单按餐别唯一并配置提前订单定时提醒', () => {
+  const menuSource = fs.readFileSync(path.join(root, 'cloudfunctions/menu/index.js'), 'utf8')
+  const orderSource = fs.readFileSync(path.join(root, 'cloudfunctions/order/index.js'), 'utf8')
+  const orderConfig = JSON.parse(fs.readFileSync(path.join(root, 'cloudfunctions/order/config.json'), 'utf8'))
+  assert.match(menuSource, /weekly_\$\{familyKey\}_\$\{weekday\}_\$\{mealType\}/)
+  assert.match(orderSource, /\$\{orderDate\}\|\$\{meal\.mealType\}/)
+  assert.match(orderSource, /event\.Type === 'Timer'/)
+  assert.match(orderSource, /客户端不能触发定时提醒/)
+  assert.equal(orderConfig.triggers[0].type, 'timer')
+  assert.equal(orderConfig.triggers[0].config, '0 0,5 2,9,22 * * * *')
+})
+
+test('厨师和食客页面包含分类双列与当前分类全选入口', () => {
+  const menuSource = fs.readFileSync(path.join(root, 'cloudfunctions/menu/index.js'), 'utf8')
+  const mealEdit = fs.readFileSync(path.join(root, 'miniprogram/pages/meal-edit/index.wxml'), 'utf8')
+  const orderEdit = fs.readFileSync(path.join(root, 'miniprogram/pages/order-edit/index.wxml'), 'utf8')
+  const orderEditLogic = fs.readFileSync(path.join(root, 'miniprogram/pages/order-edit/index.js'), 'utf8')
+  assert.match(menuSource, /系统菜品不能移动分类/)
+  assert.match(mealEdit, /category-sidebar/)
+  assert.match(mealEdit, /toggleSelectAll/)
+  assert.match(orderEdit, /order-category-sidebar/)
+  assert.match(orderEdit, /order-dish-panel/)
+  assert.match(orderEditLogic, /不吃主食会低血糖的噢/)
+})

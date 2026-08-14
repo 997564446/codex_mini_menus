@@ -35,19 +35,21 @@
 |---|---|---|---|
 | `chefCatalog` | 无 | 厨师 | 分类和菜品库 |
 | `saveCategory` | 分类名称与可选 ID | 厨师 | 新建或修改分类 |
+| `saveCategoryOrder` | `categoryIds` | 厨师 | 保存自定义分类拖动顺序 |
 | `deleteCategory` | `categoryId` | 厨师 | 删除分类并将菜品移入“未分类” |
 | `batchSetCategory` | `categoryId`、`dishIds`、`versions` | 厨师 | 批量归类，移出的菜品回到“未分类” |
-| `saveDish` | `dishId`、分类、库存、版本号 | 厨师 | 修改预置菜品的分类和库存 |
-| `chefMeals` | 无 | 厨师 | 查询周一至周日固定菜单 |
-| `saveMeal` | `mealMenuId`、菜品和版本号 | 厨师 | 保存指定星期菜单 |
-| `openMeals` | 具体日期 | 活跃食客 | 查询日期对应的星期菜单 |
-| `mealDetail` | `mealMenuId`、食客需传日期 | 家庭成员 | 星期菜单详情 |
+| `saveDish` | 可选 `dishId`、名称、分类、库存、版本号 | 厨师 | 在未分类新增菜品或修改已有菜品 |
+| `deleteDish` | `dishId`、版本号 | 厨师 | 删除未分类中的菜品 |
+| `chefMeals` | 无 | 厨师 | 查询周一至周日的早中晚固定菜单 |
+| `saveMeal` | `mealMenuId`、菜品和版本号 | 厨师 | 保存指定星期与餐别菜单 |
+| `openMeals` | 具体日期 | 活跃食客 | 查询日期对应的早中晚菜单 |
+| `mealDetail` | `mealMenuId`、食客需传日期 | 家庭成员 | 星期餐别菜单详情 |
 
 ## `order`
 
 | action | 主要 payload | 权限 | 说明 |
 |---|---|---|---|
-| `submit` | 星期菜单、日期、条目、`clientRequestId`、版本号 | 活跃食客 | 新建或修改当天唯一订单并占用库存 |
+| `submit` | 星期餐别菜单、日期、条目、`clientRequestId`、版本号 | 活跃食客 | 新建或修改当天该餐唯一订单并占用库存 |
 | `myOrders` | 无 | 活跃食客 | 本人订单列表 |
 | `detail` | `orderId` | 家庭成员 | 权限范围内订单详情 |
 | `cancelMine` | `orderId`、版本号 | 活跃食客 | 取消待确认订单 |

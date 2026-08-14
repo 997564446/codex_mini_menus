@@ -1,4 +1,11 @@
 {
+  "triggers": [
+    {
+      "name": "advanceOrderReminders",
+      "type": "timer",
+      "config": "0 0,5 2,9,22 * * * *"
+    }
+  ],
   "permissions": {
     "openapi": ["subscribeMessage.send"]
   }

@@ -1,7 +1,6 @@
 const api = require('../../utils/api')
 const { requireActiveSession, syncTabBar } = require('../../utils/session')
-const { WEEKDAY_LABELS, ORDER_LABELS } = require('../../utils/format')
-
+const { WEEKDAY_LABELS, MEAL_TYPE_LABELS, ORDER_LABELS } = require('../../utils/format')
 Page({
   data: {
     loading: true,
@@ -12,10 +11,16 @@ Page({
     selectedCategoryId: '',
     selectedCategoryName: '',
     selectedCategoryIsDefault: true,
+    selectedCategorySystemType: '',
     categoryDishes: [],
     selectedDishIds: [],
     categoryDirty: false,
     categorySaving: false,
+    categorySortMode: false,
+    categoryOrderSaving: false,
+    customCategories: [],
+    fixedCategories: [],
+    categorySortAreaHeight: 0,
     meals: [],
     orders: []
   },
@@ -57,15 +62,38 @@ Page({
           ...category,
           dishCount: dishes.filter(dish => dish.categoryId === category._id).length
         }))
+        const groupedMeals = Array.from({ length: 7 }, (_, index) => {
+          const weekday = index + 1
+          const dayMeals = meals.filter(meal => Number(meal.weekday) === weekday)
+          return {
+            _id: `weekday-${weekday}`,
+            weekday,
+            weekdayLabel: WEEKDAY_LABELS[weekday],
+            mealSummary: Object.keys(MEAL_TYPE_LABELS).map(mealType => {
+              const meal = dayMeals.find(item => item.mealType === mealType)
+              return `${MEAL_TYPE_LABELS[mealType]} ${(meal && meal.dishIds ? meal.dishIds.length : 0)} 道`
+            }).join(' · ')
+          }
+        })
         const selectedCategoryId = categories.some(category => category._id === (preferredCategoryId || this.data.selectedCategoryId))
           ? preferredCategoryId || this.data.selectedCategoryId
-          : (categories.find(category => category.isDefault) || categories[0] || {})._id || ''
+          : (categories.find(category => category.systemType === 'uncategorized') || categories[0] || {})._id || ''
+        const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
+        const categoryRowHeight = windowInfo.windowWidth * 108 / 750
+        const customCategories = categories.filter(category => !category.isDefault).map((category, index) => ({ ...category, dragY: index * categoryRowHeight }))
+        const fixedCategories = categories.filter(category => category.isDefault)
+          .sort((left, right) => Number(left.sort) - Number(right.sort))
         this.setData({
           categories,
           dishes,
-          meals,
+          meals: groupedMeals,
+          customCategories,
+          fixedCategories,
+          categorySortAreaHeight: customCategories.length * categoryRowHeight,
           loading: false
         })
+        this.categoryRowHeight = categoryRowHeight
+        this.categoryDragY = {}
         this.showCategory(selectedCategoryId)
       } else {
         const orders = await api.call('order', 'myOrders')
@@ -73,7 +101,8 @@ Page({
           orders: orders.map(order => ({
             ...order,
             statusLabel: ORDER_LABELS[order.status],
-            weekdayLabel: order.weekdayLabel || WEEKDAY_LABELS[order.weekday] || '历史菜单'
+            weekdayLabel: order.weekdayLabel || WEEKDAY_LABELS[order.weekday] || '历史菜单',
+            mealTypeLabel: order.mealTypeLabel || MEAL_TYPE_LABELS[order.mealType] || ''
           })),
           loading: false
         })
@@ -109,6 +138,43 @@ Page({
     } catch (error) { api.showError(error) }
   },
 
+  /** 开启或关闭自定义分类拖动排序模式。 */
+  toggleCategorySort() {
+    if (this.data.categoryDirty) return wx.showToast({ title: '请先保存当前批量归类', icon: 'none' })
+    this.setData({ categorySortMode: !this.data.categorySortMode })
+  },
+
+  /** 记录分类拖动中的纵向位置。 */
+  onCategoryDrag(event) {
+    if (event.detail.source === 'touch') this.categoryDragY[event.currentTarget.dataset.id] = event.detail.y
+  },
+
+  /** 保存拖动后的自定义分类顺序。 */
+  async onCategoryDrop(event) {
+    if (this.data.categoryOrderSaving) return
+    const categoryId = event.currentTarget.dataset.id
+    const fromIndex = this.data.customCategories.findIndex(category => category._id === categoryId)
+    if (fromIndex < 0) return
+    const y = this.categoryDragY[categoryId] === undefined
+      ? fromIndex * this.categoryRowHeight
+      : Number(this.categoryDragY[categoryId])
+    const toIndex = Math.max(0, Math.min(this.data.customCategories.length - 1, Math.round(y / this.categoryRowHeight)))
+    const reordered = [...this.data.customCategories]
+    const [moved] = reordered.splice(fromIndex, 1)
+    reordered.splice(toIndex, 0, moved)
+    const customCategories = reordered.map((category, index) => ({ ...category, dragY: index * this.categoryRowHeight }))
+    const categories = [...customCategories, ...this.data.fixedCategories]
+    this.setData({ customCategories, categories, categoryOrderSaving: true })
+    try {
+      await api.call('menu', 'saveCategoryOrder', { categoryIds: customCategories.map(category => category._id) })
+    } catch (error) {
+      api.showError(error)
+      await this.loadData(this.data.selectedCategoryId)
+    } finally {
+      this.setData({ categoryOrderSaving: false })
+    }
+  },
+
   /** 在左侧选择分类，并在右侧展示可批量归类的菜品。 */
   async selectCategory(event) {
     const categoryId = event.currentTarget.dataset.id
@@ -126,12 +192,14 @@ Page({
     if (!category) return
     const checkedIds = this.data.dishes.filter(dish => dish.categoryId === categoryId).map(dish => dish._id)
     const checkedSet = new Set(checkedIds)
-    const defaultCategory = this.data.categories.find(item => item.isDefault)
-    const categoryDishes = (category.isDefault
+    const defaultCategory = this.data.categories.find(item => item.systemType === 'uncategorized')
+    const isUncategorized = category.systemType === 'uncategorized'
+    const categoryDishes = (isUncategorized
       ? this.data.dishes.filter(dish => checkedSet.has(dish._id))
       : this.data.dishes
         .filter(dish => dish.categoryId === categoryId || (defaultCategory && dish.categoryId === defaultCategory._id))
-        .sort((left, right) => Number(checkedSet.has(right._id)) - Number(checkedSet.has(left._id)) || (Number(left.sort) || 9999) - (Number(right.sort) || 9999))
+        .sort((left, right) => Number(checkedSet.has(right._id)) - Number(checkedSet.has(left._id))
+          || (Number.isFinite(Number(left.sort)) ? Number(left.sort) : 9999) - (Number.isFinite(Number(right.sort)) ? Number(right.sort) : 9999))
     ).map(dish => ({
       ...dish,
       checked: checkedSet.has(dish._id),
@@ -140,7 +208,8 @@ Page({
     this.setData({
       selectedCategoryId: categoryId,
       selectedCategoryName: category.name,
-      selectedCategoryIsDefault: Boolean(category.isDefault),
+      selectedCategoryIsDefault: isUncategorized,
+      selectedCategorySystemType: category.systemType || '',
       categoryDishes,
       selectedDishIds: checkedIds,
       categoryDirty: false
@@ -149,7 +218,10 @@ Page({
 
   /** 记录右侧批量勾选结果。 */
   onCategoryDishes(event) {
-    const selectedDishIds = event.detail.value
+    const selectedDishIds = [...new Set([
+      ...event.detail.value,
+      ...this.data.categoryDishes.filter(dish => dish.isSystemDish && dish.categoryId === this.data.selectedCategoryId).map(dish => dish._id)
+    ])]
     const checkedSet = new Set(selectedDishIds)
     this.setData({
       selectedDishIds,
@@ -220,7 +292,7 @@ Page({
     if (!result.confirm) return
     await api.call('menu', 'deleteCategory', { categoryId: category._id })
     wx.showToast({ title: '分类已删除', icon: 'success' })
-    const defaultCategory = this.data.categories.find(item => item.isDefault)
+    const defaultCategory = this.data.categories.find(item => item.systemType === 'uncategorized')
     await this.loadData(defaultCategory ? defaultCategory._id : '')
   },
 
@@ -231,10 +303,29 @@ Page({
     if (id) wx.navigateTo({ url: `/pages/dish-edit/index?id=${id}` })
   },
 
+  /** 仅在“未分类”中打开新增菜品页。 */
+  addDish() {
+    if (this.data.selectedCategorySystemType !== 'uncategorized') return
+    wx.navigateTo({ url: '/pages/dish-edit/index' })
+  },
+
+  /** 删除“未分类”中的菜品。 */
+  async removeDish(event) {
+    const dish = this.data.dishes.find(item => item._id === event.currentTarget.dataset.id)
+    if (!dish || this.data.selectedCategorySystemType !== 'uncategorized') return
+    const result = await wx.showModal({ title: `删除“${dish.name}”？`, content: '删除后不会影响历史订单，但会从后续菜单中移除。' })
+    if (!result.confirm) return
+    try {
+      await api.call('menu', 'deleteDish', { dishId: dish._id, version: dish.version })
+      wx.showToast({ title: '菜品已删除', icon: 'success' })
+      await this.loadData(this.data.selectedCategoryId)
+    } catch (error) { api.showError(error) }
+  },
+
   /** 打开指定星期的菜单编辑页。 */
   editMeal(event) {
-    const id = event.currentTarget.dataset.id
-    wx.navigateTo({ url: `/pages/meal-edit/index${id ? `?id=${id}` : ''}` })
+    const weekday = event.currentTarget.dataset.weekday
+    wx.navigateTo({ url: `/pages/meal-edit/index?weekday=${weekday}` })
   },
 
   /** 打开订单详情。 */
