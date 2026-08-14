@@ -95,7 +95,7 @@ function validateSelectedSpecs(specs, selectedSpecs) {
  * @returns {Array<object>} 安全条目
  */
 function normalizeItems(items) {
-  if (!Array.isArray(items) || !items.length || items.length > 60) {
+  if (!Array.isArray(items) || !items.length) {
     throw Object.assign(new Error('请至少选择一道菜'), { code: 'INVALID_INPUT' })
   }
   const seen = new Set()

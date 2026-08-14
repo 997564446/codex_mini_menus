@@ -86,3 +86,11 @@ test('手动添加菜品要求填写名称、库存和单价', () => {
   assert.match(dishEditLogic, /priceCents/)
   assert.match(menuSource, /PRESET_DISH_VERSION = '1\.2\.2-5'/)
 })
+
+test('星期菜单和食客订单不再限制每餐 60 道菜', () => {
+  const menuSource = fs.readFileSync(path.join(root, 'cloudfunctions/menu/index.js'), 'utf8')
+  const orderDomain = fs.readFileSync(path.join(root, 'cloudfunctions/order/domain.js'), 'utf8')
+  assert.doesNotMatch(menuSource, /每餐最多选择 60 道菜/)
+  assert.doesNotMatch(menuSource, /slice\(0, 60\)/)
+  assert.doesNotMatch(orderDomain, /items\.length > 60/)
+})

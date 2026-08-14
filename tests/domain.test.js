@@ -120,6 +120,7 @@ test('订单状态只能逐步向前或从进行中取消', () => {
 
 test('订单条目拒绝重复菜品和越界份数', () => {
   assert.equal(normalizeItems([{ dishId: 'd1', quantity: 2 }])[0].quantity, 2)
+  assert.equal(normalizeItems(Array.from({ length: 61 }, (_, index) => ({ dishId: `d${index}`, quantity: 1 }))).length, 61)
   assert.throws(() => normalizeItems([]), /至少选择/)
   assert.throws(() => normalizeItems([{ dishId: 'd1', quantity: 1 }, { dishId: 'd1', quantity: 2 }]), /重复菜品/)
   assert.throws(() => normalizeItems([{ dishId: 'd1', quantity: 21 }]), /数量不正确/)

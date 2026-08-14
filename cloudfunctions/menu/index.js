@@ -292,7 +292,7 @@ async function ensureWeeklyMenus(familyId) {
 }
 
 async function getDishesByIds(familyId, ids) {
-  const uniqueIds = [...new Set(ids)].slice(0, 60)
+  const uniqueIds = [...new Set(ids)]
   const result = []
   for (let index = 0; index < uniqueIds.length; index += 20) {
     const part = uniqueIds.slice(index, index + 20)
@@ -597,7 +597,6 @@ async function saveMeal(openid, payload) {
   assertWeeklyMenu(weekday)
   assertMealType(meal.mealType)
   const dishIds = [...new Set(Array.isArray(payload.dishIds) ? payload.dishIds.map(id => cleanText(id, 80)).filter(Boolean) : [])]
-  if (dishIds.length > 60) throw Object.assign(new Error('每餐最多选择 60 道菜'), { code: 'INVALID_INPUT' })
   const dishes = await getDishesByIds(chef.familyId, dishIds)
   const [defaultCategory, stapleCategory] = await Promise.all([
     ensureDefaultCategory(chef.familyId),
