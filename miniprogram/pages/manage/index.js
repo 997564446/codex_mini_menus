@@ -29,6 +29,11 @@ Page({
   },
 
   async onPullDownRefresh() {
+    if (this.data.categoryDirty) {
+      wx.showToast({ title: '请先保存当前勾选', icon: 'none' })
+      wx.stopPullDownRefresh()
+      return
+    }
     await this.loadData()
     wx.stopPullDownRefresh()
   },
@@ -83,11 +88,14 @@ Page({
   async switchChefTab(event) {
     const chefTab = event.currentTarget.dataset.tab
     if (chefTab === this.data.chefTab) return
+    let discardedCategorySelection = false
     if (this.data.categoryDirty) {
-      const result = await wx.showModal({ title: '放弃未保存的归类？', content: '切换到星期菜单后，本次勾选不会保存。' })
+      const result = await wx.showModal({ title: '放弃未保存的勾选？', content: '切换页面后，本次勾选不会保存。' })
       if (!result.confirm) return
+      discardedCategorySelection = true
     }
     this.setData({ chefTab })
+    if (discardedCategorySelection) this.showCategory(this.data.selectedCategoryId)
   },
 
   /** 新建菜品分类。 */
@@ -118,9 +126,12 @@ Page({
     if (!category) return
     const checkedIds = this.data.dishes.filter(dish => dish.categoryId === categoryId).map(dish => dish._id)
     const checkedSet = new Set(checkedIds)
+    const defaultCategory = this.data.categories.find(item => item.isDefault)
     const categoryDishes = (category.isDefault
       ? this.data.dishes.filter(dish => checkedSet.has(dish._id))
-      : [...this.data.dishes].sort((left, right) => Number(checkedSet.has(right._id)) - Number(checkedSet.has(left._id)) || (Number(left.sort) || 9999) - (Number(right.sort) || 9999))
+      : this.data.dishes
+        .filter(dish => dish.categoryId === categoryId || (defaultCategory && dish.categoryId === defaultCategory._id))
+        .sort((left, right) => Number(checkedSet.has(right._id)) - Number(checkedSet.has(left._id)) || (Number(left.sort) || 9999) - (Number(right.sort) || 9999))
     ).map(dish => ({
       ...dish,
       checked: checkedSet.has(dish._id),

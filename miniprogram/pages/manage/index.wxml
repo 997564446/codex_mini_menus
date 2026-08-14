@@ -28,7 +28,7 @@
 
         <view class="category-content">
           <view class="category-content-head">
-            <view><text class="category-title">{{selectedCategoryName}}</text><text class="category-copy">{{selectedCategoryIsDefault ? '尚未归类的菜品' : '已归类菜品排在前面，可批量勾选移动'}}</text></view>
+            <view><text class="category-title">{{selectedCategoryName}}</text><text class="category-copy">{{selectedCategoryIsDefault ? '尚未归类的菜品' : '仅显示本分类和未分类，本分类排在前面'}}</text></view>
             <button wx:if="{{!selectedCategoryIsDefault}}" class="category-save" loading="{{categorySaving}}" disabled="{{categorySaving || !categoryDirty}}" bindtap="saveCategoryDishes">保存</button>
           </view>
           <scroll-view class="category-dish-list" scroll-y enhanced show-scrollbar="{{false}}">
@@ -57,14 +57,14 @@
         <text class="empty-emoji">🗓️</text><text class="empty-title">星期菜单还没准备好</text><text class="empty-copy">下拉刷新后再试一次。</text>
       </view>
       <block wx:else>
-      <view wx:for="{{meals}}" wx:key="_id" class="meal-row card">
-        <view class="meal-icon">{{item.weekday}}</view>
-        <view class="meal-body" data-id="{{item._id}}" bindtap="editMeal">
-          <text class="meal-title">{{item.weekdayLabel}}菜单</text>
-          <text class="meal-meta">已安排 {{item.dishIds.length}} 道菜</text>
+        <view wx:for="{{meals}}" wx:key="_id" class="meal-row card" data-id="{{item._id}}" bindtap="editMeal">
+          <view class="meal-icon">{{item.weekday}}</view>
+          <view class="meal-body">
+            <text class="meal-title">{{item.weekdayLabel}}菜单</text>
+            <text class="meal-meta">已安排 {{item.dishIds.length}} 道菜</text>
+          </view>
+          <text class="muted">编辑 ›</text>
         </view>
-        <text class="muted">编辑 ›</text>
-      </view>
       </block>
     </view>
   </view>

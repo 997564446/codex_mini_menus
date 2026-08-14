@@ -1,14 +1,31 @@
 <view class="edit-page">
   <view class="meal-hero card"><text class="meal-hero-emoji">🗓️</text><view><text class="meal-hero-title">设置{{weekdayLabel}}菜单</text><text class="meal-hero-copy">勾选当天可供家人选择的菜品</text></view></view>
 
-  <view class="section-title"><text>选择菜品</text><text class="selected-count">已选 {{selectedDishIds.length}}</text></view>
-  <view wx:if="{{!dishes.length}}" class="card empty-state"><text class="empty-emoji">🥕</text><text class="empty-title">菜品库还没准备好</text><text class="empty-copy">请返回菜品库下拉刷新。</text></view>
-  <checkbox-group wx:else bindchange="onDishes">
-    <label wx:for="{{dishes}}" wx:key="_id" class="dish-choice card">
-      <view class="dish-image placeholder">🥘</view>
-      <view class="dish-body"><text class="dish-name">{{item.name}}</text><text class="dish-copy">{{item.categoryName}} · {{item.stockText}}</text></view>
-      <checkbox value="{{item._id}}" checked="{{item.checked}}" color="#55a66f" />
-    </label>
-  </checkbox-group>
+  <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在整理星期菜单…</text></view>
+  <view wx:elif="{{!dishes.length}}" class="card empty-state"><text class="empty-emoji">🥕</text><text class="empty-title">菜品库还没准备好</text><text class="empty-copy">请返回菜品库下拉刷新。</text></view>
+  <view wx:else class="menu-layout card">
+    <scroll-view class="category-sidebar" scroll-y enhanced show-scrollbar="{{false}}">
+      <view wx:for="{{categories}}" wx:key="_id" class="category-nav {{selectedCategoryId === item._id ? 'active' : ''}}" data-id="{{item._id}}" bindtap="selectCategory">
+        <text class="category-name">{{item.name}}</text>
+        <text class="category-count">{{item.dishCount}}</text>
+      </view>
+    </scroll-view>
+
+    <view class="dish-panel">
+      <view class="dish-panel-head">
+        <view class="dish-panel-title"><text class="category-title">{{selectedCategoryName}}</text><text class="selected-count">菜单已选 {{selectedDishIds.length}} 道</text></view>
+        <button class="select-all-btn" disabled="{{!categoryDishes.length}}" bindtap="toggleSelectAll">{{categoryAllSelected ? '取消全选' : '全选'}}</button>
+      </view>
+      <scroll-view class="dish-list" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:if="{{!categoryDishes.length}}" class="category-empty">这个分类还没有菜品</view>
+        <checkbox-group wx:else bindchange="onDishes">
+          <label wx:for="{{categoryDishes}}" wx:key="_id" class="dish-choice {{item.checked ? 'checked' : ''}}">
+            <view class="dish-body"><text class="dish-name">{{item.name}}</text><text class="dish-copy">{{item.stockText}}</text></view>
+            <checkbox value="{{item._id}}" checked="{{item.checked}}" color="#55a66f" />
+          </label>
+        </checkbox-group>
+      </scroll-view>
+    </view>
+  </view>
   <button class="primary-btn save-btn" loading="{{saving}}" disabled="{{saving || !dishes.length}}" bindtap="save">保存{{weekdayLabel}}菜单</button>
 </view>
