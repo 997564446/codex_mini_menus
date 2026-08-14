@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { hashSecret, safeEqual } = require('../cloudfunctions/identity/domain')
-const { normalizeDishSettings, normalizeDishSelection, assertWeeklyMenu, assertMealType, assertMealDishCategories, normalizeCategoryOrder } = require('../cloudfunctions/menu/domain')
+const { normalizeDishSettings, normalizeDishSelection, normalizeCategoryChanges, assertWeeklyMenu, assertMealType, assertMealDishCategories, normalizeCategoryOrder } = require('../cloudfunctions/menu/domain')
 const presetDishes = require('../cloudfunctions/menu/preset-dishes')
 const { assertOrderWindow, assertTransition, assertStapleSelection, validateSelectedSpecs, normalizeItems, inventoryDeltas } = require('../cloudfunctions/order/domain')
 const { mealAvailability } = require('../miniprogram/utils/format')
@@ -29,10 +29,17 @@ test('历史订单规格快照仍可正确校验', () => {
 })
 
 test('菜品库存支持有限数量和无限模式', () => {
-  assert.deepEqual(normalizeDishSettings({ categoryId: 'c1', stock: 5 }), { categoryId: 'c1', stockUnlimited: false, stock: 5 })
-  assert.deepEqual(normalizeDishSettings({ categoryId: 'c1', stockUnlimited: true, stock: -1 }), { categoryId: 'c1', stockUnlimited: true, stock: 0 })
-  assert.throws(() => normalizeDishSettings({ categoryId: 'c1', stock: -1 }), /分类和库存/)
-  assert.throws(() => normalizeDishSettings({ categoryId: '', stock: 1 }), /分类和库存/)
+  assert.deepEqual(normalizeDishSettings({ categoryId: 'c1', stock: 5, priceCents: 1500 }), {
+    categoryId: 'c1', stockUnlimited: false, stock: 5, priceCents: 1500
+  })
+  assert.deepEqual(normalizeDishSettings({ categoryId: 'c1', stockUnlimited: true, stock: '', priceCents: 0 }), {
+    categoryId: 'c1', stockUnlimited: true, stock: 0, priceCents: 0
+  })
+  assert.throws(() => normalizeDishSettings({ categoryId: 'c1', stock: '', priceCents: 100 }), /分类和库存/)
+  assert.throws(() => normalizeDishSettings({ categoryId: 'c1', stock: -1, priceCents: 100 }), /分类和库存/)
+  assert.throws(() => normalizeDishSettings({ categoryId: '', stock: 1, priceCents: 100 }), /分类和库存/)
+  assert.throws(() => normalizeDishSettings({ categoryId: 'c1', stock: 1, priceCents: '' }), /单价/)
+  assert.throws(() => normalizeDishSettings({ categoryId: 'c1', stock: 1, priceCents: 1000000 }), /单价/)
 })
 
 test('批量归类拒绝重复、空标识和超量菜品', () => {
@@ -40,6 +47,11 @@ test('批量归类拒绝重复、空标识和超量菜品', () => {
   assert.throws(() => normalizeDishSelection(['d1', 'd1']), /重复菜品/)
   assert.throws(() => normalizeDishSelection(['']), /无效/)
   assert.throws(() => normalizeDishSelection(Array.from({ length: 101 }, (_, index) => `d${index}`)), /数量不正确/)
+})
+
+test('批量归类只接受互不重叠的明确移入和移出菜品', () => {
+  assert.deepEqual(normalizeCategoryChanges(['d1'], ['d2']), { addDishIds: ['d1'], removeDishIds: ['d2'] })
+  assert.throws(() => normalizeCategoryChanges(['d1'], ['d1']), /不能同时移入和移出/)
 })
 
 test('星期菜单只接受周一至周日且不硬编码具体菜品', () => {
@@ -88,9 +100,15 @@ test('客户端三餐截止展示与服务端规则一致', () => {
 })
 
 test('初始化菜品完整且不重复', () => {
-  assert.equal(presetDishes.length, 51)
-  assert.equal(new Set(presetDishes.map(name => name.toLowerCase())).size, 51)
-  assert.ok(presetDishes.includes('kfc'))
+  assert.equal(presetDishes.length, 71)
+  assert.equal(new Set(presetDishes.map(dish => dish.name.toLowerCase())).size, 71)
+  assert.deepEqual(presetDishes.find(dish => dish.name === 'kfc'), {
+    name: 'kfc', priceCents: 5000, stockUnlimited: true, stock: 0
+  })
+  assert.deepEqual(presetDishes.find(dish => dish.name === '家庭火锅'), {
+    name: '家庭火锅', priceCents: 5000, stockUnlimited: false, stock: 0
+  })
+  assert.ok(presetDishes.every(dish => Number.isInteger(dish.priceCents) && Number.isInteger(dish.stock)))
 })
 
 test('订单状态只能逐步向前或从进行中取消', () => {

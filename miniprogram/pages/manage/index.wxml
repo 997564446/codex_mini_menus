@@ -50,13 +50,13 @@
                 <view class="dish-row-actions"><text class="stock-link" data-id="{{item._id}}" bindtap="editDish">编辑</text><text class="delete-link" data-id="{{item._id}}" bindtap="removeDish">删除</text></view>
               </view>
             </block>
-            <checkbox-group wx:else bindchange="onCategoryDishes">
-              <view wx:for="{{categoryDishes}}" wx:key="_id" class="category-dish-row {{item.checked ? 'checked' : ''}}">
+            <block wx:else>
+              <view wx:for="{{categoryDishes}}" wx:key="_id" class="category-dish-row {{item.checked ? 'checked' : ''}}" data-id="{{item._id}}" bindtap="toggleCategoryDish">
                 <checkbox value="{{item._id}}" checked="{{item.checked}}" disabled="{{item.isSystemDish}}" color="#55a66f" />
                 <view class="category-dish-body"><text class="category-dish-name">{{item.name}}</text><text class="category-dish-meta">{{item.categoryDisplay}} · 库存 {{item.stockText}}</text></view>
                 <text wx:if="{{!item.isSystemDish}}" class="stock-link" data-id="{{item._id}}" catchtap="editDish">库存 ›</text>
               </view>
-            </checkbox-group>
+            </block>
           </scroll-view>
         </view>
       </view>

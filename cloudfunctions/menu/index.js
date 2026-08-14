@@ -4,13 +4,14 @@ const {
   WEEKDAY_LABELS,
   MEAL_TYPES,
   normalizeDishSettings,
-  normalizeDishSelection,
+  normalizeCategoryChanges,
   normalizeCategoryOrder,
   assertWeeklyMenu,
   assertMealType,
   assertMealDishCategories
 } = require('./domain')
 const PRESET_DISHES = require('./preset-dishes')
+const PRESET_DISH_VERSION = '1.2.2-5'
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
@@ -145,26 +146,46 @@ async function ensureNoStapleDish(familyId, categoryId) {
 }
 
 /**
- * 为家庭补齐预置菜品，默认放在“未分类”且库存为 0。
+ * 按当前版本重新初始化家庭预置菜品；只在版本变化时重置分类、库存和单价。
  * @param {string} familyId 家庭标识
  * @param {string} categoryId 默认分类标识
  */
 async function ensurePresetDishes(familyId, categoryId) {
   const result = await db.collection('dishes').where({ familyId }).limit(100).get()
   const byName = new Map(result.data.map(dish => [String(dish.name || '').trim().toLowerCase(), dish]))
-  const tasks = PRESET_DISHES.map((name, sort) => async () => {
+  const presetNames = new Set(PRESET_DISHES.map(dish => dish.name.toLowerCase()))
+  const tasks = PRESET_DISHES.map((preset, sort) => async () => {
+    const { name, priceCents, stockUnlimited, stock } = preset
     const key = name.toLowerCase()
     const existing = byName.get(key)
     const now = db.serverDate()
     if (existing) {
       const updates = {}
-      if (!existing.isPreset) updates.isPreset = true
-      if (existing.presetName !== name) updates.presetName = name
-      if (!existing.enabled && !existing.deletedAt) updates.enabled = true
-      if (typeof existing.stockUnlimited !== 'boolean') updates.stockUnlimited = false
-      if (!Number.isInteger(existing.stock)) updates.stock = 0
-      if (!Number.isInteger(existing.sort)) updates.sort = sort
-      if (!Number.isInteger(existing.version)) updates.version = 1
+      if (existing.presetVersion !== PRESET_DISH_VERSION) {
+        Object.assign(updates, {
+          name,
+          presetName: name,
+          presetVersion: PRESET_DISH_VERSION,
+          isPreset: true,
+          categoryId,
+          priceCents,
+          stockUnlimited,
+          stock,
+          enabled: true,
+          deletedAt: null,
+          sort,
+          version: Number.isInteger(existing.version) ? _.inc(1) : 1
+        })
+      } else {
+        if (!existing.isPreset) updates.isPreset = true
+        if (existing.presetName !== name) updates.presetName = name
+        if (!existing.enabled && !existing.deletedAt) updates.enabled = true
+        if (typeof existing.stockUnlimited !== 'boolean') updates.stockUnlimited = stockUnlimited
+        if (!Number.isInteger(existing.stock)) updates.stock = stock
+        if (!Number.isInteger(existing.priceCents)) updates.priceCents = priceCents
+        if (!Number.isInteger(existing.sort)) updates.sort = sort
+        if (!Number.isInteger(existing.version)) updates.version = 1
+      }
       if (Object.keys(updates).length) {
         updates.updatedAt = now
         await db.collection('dishes').doc(existing._id).update({ data: updates })
@@ -177,14 +198,15 @@ async function ensurePresetDishes(familyId, categoryId) {
         familyId,
         name,
         presetName: name,
+        presetVersion: PRESET_DISH_VERSION,
         isPreset: true,
         categoryId,
         description: '',
         imageFileId: '',
-        priceCents: 0,
+        priceCents,
         specs: [],
-        stockUnlimited: false,
-        stock: 0,
+        stockUnlimited,
+        stock,
         enabled: true,
         sort,
         version: 1,
@@ -194,6 +216,19 @@ async function ensurePresetDishes(familyId, categoryId) {
     })
   })
   for (let index = 0; index < tasks.length; index += 10) await Promise.all(tasks.slice(index, index + 10).map(task => task()))
+  const obsoletePresets = result.data.filter(dish => dish.isPreset && !dish.isSystemDish
+    && !presetNames.has(String(dish.presetName || dish.name || '').trim().toLowerCase())
+    && dish.enabled !== false && !dish.deletedAt)
+  for (const dish of obsoletePresets) {
+    await db.collection('dishes').doc(dish._id).update({
+      data: {
+        enabled: false,
+        deletedAt: db.serverDate(),
+        version: Number.isInteger(dish.version) ? _.inc(1) : 1,
+        updatedAt: db.serverDate()
+      }
+    })
+  }
 }
 
 /**
@@ -396,9 +431,9 @@ async function updateDishCategories(transaction, familyId, dishes, categoryId, n
 }
 
 /**
- * 批量设置一个分类中的菜品；移出的菜品自动回到“未分类”。
+ * 按用户明确勾选或取消的增量变更调整分类，未提交的菜品保持原分类。
  * @param {string} openid 厨师微信标识
- * @param {object} payload 分类、选中菜品和菜品版本
+ * @param {object} payload 分类、移入/移出菜品和菜品版本
  * @returns {Promise<object>} 批量归类结果
  */
 async function batchSetCategory(openid, payload) {
@@ -407,8 +442,7 @@ async function batchSetCategory(openid, payload) {
   const category = await getDocument('categories', categoryId)
   if (!category || category.familyId !== chef.familyId) throw Object.assign(new Error('分类不存在'), { code: 'NOT_FOUND' })
   if (category.systemType === 'uncategorized') throw Object.assign(new Error('“未分类”由系统自动管理'), { code: 'INVALID_INPUT' })
-  const selectedIds = normalizeDishSelection(payload.dishIds)
-  const selectedSet = new Set(selectedIds)
+  const { addDishIds, removeDishIds } = normalizeCategoryChanges(payload.addDishIds, payload.removeDishIds)
   const versions = payload.versions && typeof payload.versions === 'object' ? payload.versions : {}
   const defaultCategory = await ensureDefaultCategory(chef.familyId)
   const transaction = await db.startTransaction()
@@ -416,22 +450,26 @@ async function batchSetCategory(openid, payload) {
     const result = await transaction.collection('dishes').where({ familyId: chef.familyId }).limit(100).get()
     const dishes = result.data.filter(dish => dish.enabled !== false && !dish.deletedAt)
     const dishMap = new Map(dishes.map(dish => [dish._id, dish]))
-    if (selectedIds.some(id => !dishMap.has(id))) throw Object.assign(new Error('批量归类包含不存在的菜品'), { code: 'INVALID_INPUT' })
-    if (selectedIds.some(id => dishMap.get(id).isSystemDish && dishMap.get(id).categoryId !== categoryId)) {
+    const changedIds = [...addDishIds, ...removeDishIds]
+    if (changedIds.some(id => !dishMap.has(id))) throw Object.assign(new Error('批量归类包含不存在的菜品'), { code: 'INVALID_INPUT' })
+    if (changedIds.some(id => dishMap.get(id).isSystemDish)) {
       throw Object.assign(new Error('系统菜品不能移动分类'), { code: 'INVALID_INPUT' })
     }
-    dishes.filter(dish => dish.isSystemDish && dish.categoryId === categoryId).forEach(dish => selectedSet.add(dish._id))
-    const affected = dishes.filter(dish => dish.categoryId === categoryId || selectedSet.has(dish._id))
+    const movingIn = addDishIds.map(id => dishMap.get(id))
+    const movingOut = removeDishIds.map(id => dishMap.get(id))
+    if (movingIn.some(dish => dish.categoryId !== defaultCategory._id)
+      || movingOut.some(dish => dish.categoryId !== categoryId)) {
+      throw Object.assign(new Error('菜品分类已经变化，请刷新后重试'), { code: 'CONFLICT' })
+    }
+    const affected = [...movingIn, ...movingOut]
     if (affected.some(dish => Number(versions[dish._id]) !== Number(dish.version))) {
       throw Object.assign(new Error('菜品库存或分类已经变化，请刷新后重试'), { code: 'CONFLICT' })
     }
     const now = db.serverDate()
-    const movingIn = affected.filter(dish => selectedSet.has(dish._id) && dish.categoryId !== categoryId)
-    const movingOut = affected.filter(dish => !dish.isSystemDish && !selectedSet.has(dish._id) && dish.categoryId === categoryId)
     const updated = await updateDishCategories(transaction, chef.familyId, movingIn, categoryId, now)
       + await updateDishCategories(transaction, chef.familyId, movingOut, defaultCategory._id, now)
     await transaction.commit()
-    return { categoryId, selectedCount: selectedSet.size, updated }
+    return { categoryId, added: movingIn.length, removed: movingOut.length, updated }
   } catch (error) {
     await transaction.rollback().catch(() => {})
     throw error
@@ -439,7 +477,7 @@ async function batchSetCategory(openid, payload) {
 }
 
 /**
- * 新增自定义菜品或修改已有菜品的分类和库存。
+ * 新增自定义菜品或修改已有菜品的分类、库存和单价。
  * @param {string} openid 厨师微信标识
  * @param {object} payload 菜品表单
  * @returns {Promise<object>} 菜品标识与版本
@@ -472,7 +510,6 @@ async function saveDish(openid, payload) {
         categoryId: defaultCategory._id,
         description: '',
         imageFileId: '',
-        priceCents: 0,
         specs: [],
         ...normalized,
         enabled: true,

@@ -37,8 +37,8 @@
 | `saveCategory` | 分类名称与可选 ID | 厨师 | 新建或修改分类 |
 | `saveCategoryOrder` | `categoryIds` | 厨师 | 保存自定义分类拖动顺序 |
 | `deleteCategory` | `categoryId` | 厨师 | 删除分类并将菜品移入“未分类” |
-| `batchSetCategory` | `categoryId`、`dishIds`、`versions` | 厨师 | 批量归类，移出的菜品回到“未分类” |
-| `saveDish` | 可选 `dishId`、名称、分类、库存、版本号 | 厨师 | 在未分类新增菜品或修改已有菜品 |
+| `batchSetCategory` | `categoryId`、`addDishIds`、`removeDishIds`、`versions` | 厨师 | 按明确增量批量归类，移出的菜品回到“未分类” |
+| `saveDish` | 可选 `dishId`、名称、分类、库存、单价（整数分）、版本号 | 厨师 | 在未分类新增菜品或修改已有菜品；新增时名称、库存和单价必填 |
 | `deleteDish` | `dishId`、版本号 | 厨师 | 删除未分类中的菜品 |
 | `chefMeals` | 无 | 厨师 | 查询周一至周日的早中晚固定菜单 |
 | `saveMeal` | `mealMenuId`、菜品和版本号 | 厨师 | 保存指定星期与餐别菜单 |

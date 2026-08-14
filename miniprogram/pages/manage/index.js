@@ -13,7 +13,8 @@ Page({
     selectedCategoryIsDefault: true,
     selectedCategorySystemType: '',
     categoryDishes: [],
-    selectedDishIds: [],
+    categoryAddedDishIds: [],
+    categoryRemovedDishIds: [],
     categoryDirty: false,
     categorySaving: false,
     categorySortMode: false,
@@ -211,42 +212,52 @@ Page({
       selectedCategoryIsDefault: isUncategorized,
       selectedCategorySystemType: category.systemType || '',
       categoryDishes,
-      selectedDishIds: checkedIds,
+      categoryAddedDishIds: [],
+      categoryRemovedDishIds: [],
       categoryDirty: false
     })
   },
 
-  /** 记录右侧批量勾选结果。 */
-  onCategoryDishes(event) {
-    const selectedDishIds = [...new Set([
-      ...event.detail.value,
-      ...this.data.categoryDishes.filter(dish => dish.isSystemDish && dish.categoryId === this.data.selectedCategoryId).map(dish => dish._id)
-    ])]
-    const checkedSet = new Set(selectedDishIds)
+  /** 记录用户明确勾选或取消的单道菜，避免从完整复选框列表推断其他菜品。 */
+  toggleCategoryDish(event) {
+    const dishId = event.currentTarget.dataset.id
+    const dish = this.data.categoryDishes.find(item => item._id === dishId)
+    if (!dish || dish.isSystemDish) return
+    const checked = !dish.checked
+    const originallyChecked = dish.categoryId === this.data.selectedCategoryId
+    const addedSet = new Set(this.data.categoryAddedDishIds)
+    const removedSet = new Set(this.data.categoryRemovedDishIds)
+    addedSet.delete(dishId)
+    removedSet.delete(dishId)
+    if (checked !== originallyChecked) {
+      if (checked) addedSet.add(dishId)
+      else removedSet.add(dishId)
+    }
     this.setData({
-      selectedDishIds,
-      categoryDishes: this.data.categoryDishes.map(dish => {
-        const checked = checkedSet.has(dish._id)
-        return {
-          ...dish,
+      categoryAddedDishIds: [...addedSet],
+      categoryRemovedDishIds: [...removedSet],
+      categoryDishes: this.data.categoryDishes.map(item => item._id === dishId
+        ? {
+          ...item,
           checked,
           categoryDisplay: checked
             ? this.data.selectedCategoryName
-            : dish.categoryId === this.data.selectedCategoryId ? '保存后移回未分类' : dish.categoryName
+            : originallyChecked ? '保存后移回未分类' : item.categoryName
         }
-      }),
-      categoryDirty: true
+        : item),
+      categoryDirty: addedSet.size > 0 || removedSet.size > 0
     })
   },
 
-  /** 保存当前分类中的全部勾选结果。 */
+  /** 只保存本次明确移入或移出的菜品。 */
   async saveCategoryDishes() {
     if (this.data.selectedCategoryIsDefault || !this.data.categoryDirty) return
     this.setData({ categorySaving: true })
     try {
       await api.call('menu', 'batchSetCategory', {
         categoryId: this.data.selectedCategoryId,
-        dishIds: this.data.selectedDishIds,
+        addDishIds: this.data.categoryAddedDishIds,
+        removeDishIds: this.data.categoryRemovedDishIds,
         versions: Object.fromEntries(this.data.dishes.map(dish => [dish._id, dish.version]))
       })
       wx.showToast({ title: '批量归类已保存', icon: 'success' })

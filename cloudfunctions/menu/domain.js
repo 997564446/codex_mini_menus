@@ -10,7 +10,7 @@ function cleanText(value, max) {
 }
 
 /**
- * 校验厨师为预置菜品设置的分类和库存。
+ * 校验厨师设置的菜品分类、库存和单价。
  * @param {object} payload 菜品设置
  * @returns {object} 安全设置
  */
@@ -18,10 +18,16 @@ function normalizeDishSettings(payload) {
   const categoryId = cleanText(payload.categoryId, 80)
   const stockUnlimited = Boolean(payload.stockUnlimited)
   const stock = Number(payload.stock)
-  if (!categoryId || (!stockUnlimited && (!Number.isInteger(stock) || stock < 0 || stock > 9999))) {
+  const priceCents = Number(payload.priceCents)
+  const hasStock = payload.stock !== '' && payload.stock !== null && typeof payload.stock !== 'undefined'
+  const hasPrice = payload.priceCents !== '' && payload.priceCents !== null && typeof payload.priceCents !== 'undefined'
+  if (!categoryId || (!stockUnlimited && (!hasStock || !Number.isInteger(stock) || stock < 0 || stock > 9999))) {
     throw Object.assign(new Error('请正确填写分类和库存'), { code: 'INVALID_INPUT' })
   }
-  return { categoryId, stockUnlimited, stock: stockUnlimited ? 0 : stock }
+  if (!hasPrice || !Number.isInteger(priceCents) || priceCents < 0 || priceCents > 999999) {
+    throw Object.assign(new Error('请填写 0 至 9999.99 元的单价'), { code: 'INVALID_INPUT' })
+  }
+  return { categoryId, stockUnlimited, stock: stockUnlimited ? 0 : stock, priceCents }
 }
 
 /**
@@ -38,6 +44,22 @@ function normalizeDishSelection(dishIds) {
     throw Object.assign(new Error('批量归类包含无效或重复菜品'), { code: 'INVALID_INPUT' })
   }
   return normalized
+}
+
+/**
+ * 整理批量归类的增量变更，禁止同一道菜同时移入和移出。
+ * @param {Array<string>} addDishIds 明确移入当前分类的菜品标识
+ * @param {Array<string>} removeDishIds 明确移出当前分类的菜品标识
+ * @returns {{addDishIds: Array<string>, removeDishIds: Array<string>}} 安全的增量变更
+ */
+function normalizeCategoryChanges(addDishIds, removeDishIds) {
+  const normalizedAddIds = normalizeDishSelection(addDishIds)
+  const normalizedRemoveIds = normalizeDishSelection(removeDishIds)
+  const removeSet = new Set(normalizedRemoveIds)
+  if (normalizedAddIds.some(id => removeSet.has(id))) {
+    throw Object.assign(new Error('同一道菜不能同时移入和移出分类'), { code: 'INVALID_INPUT' })
+  }
+  return { addDishIds: normalizedAddIds, removeDishIds: normalizedRemoveIds }
 }
 
 /**
@@ -95,6 +117,7 @@ module.exports = {
   MEAL_TYPES,
   normalizeDishSettings,
   normalizeDishSelection,
+  normalizeCategoryChanges,
   assertWeeklyMenu,
   assertMealType,
   assertMealDishCategories,

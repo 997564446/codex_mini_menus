@@ -62,13 +62,27 @@ test('三餐订单按餐别唯一并配置提前订单定时提醒', () => {
 
 test('厨师和食客页面包含分类双列与当前分类全选入口', () => {
   const menuSource = fs.readFileSync(path.join(root, 'cloudfunctions/menu/index.js'), 'utf8')
+  const manageSource = fs.readFileSync(path.join(root, 'miniprogram/pages/manage/index.js'), 'utf8')
   const mealEdit = fs.readFileSync(path.join(root, 'miniprogram/pages/meal-edit/index.wxml'), 'utf8')
   const orderEdit = fs.readFileSync(path.join(root, 'miniprogram/pages/order-edit/index.wxml'), 'utf8')
   const orderEditLogic = fs.readFileSync(path.join(root, 'miniprogram/pages/order-edit/index.js'), 'utf8')
   assert.match(menuSource, /系统菜品不能移动分类/)
+  assert.match(manageSource, /addDishIds:\s*this\.data\.categoryAddedDishIds/)
+  assert.match(manageSource, /removeDishIds:\s*this\.data\.categoryRemovedDishIds/)
   assert.match(mealEdit, /category-sidebar/)
   assert.match(mealEdit, /toggleSelectAll/)
   assert.match(orderEdit, /order-category-sidebar/)
   assert.match(orderEdit, /order-dish-panel/)
   assert.match(orderEditLogic, /不吃主食会低血糖的噢/)
+})
+
+test('手动添加菜品要求填写名称、库存和单价', () => {
+  const dishEdit = fs.readFileSync(path.join(root, 'miniprogram/pages/dish-edit/index.wxml'), 'utf8')
+  const dishEditLogic = fs.readFileSync(path.join(root, 'miniprogram/pages/dish-edit/index.js'), 'utf8')
+  const menuSource = fs.readFileSync(path.join(root, 'cloudfunctions/menu/index.js'), 'utf8')
+  assert.match(dishEdit, /菜品名称（必填）/)
+  assert.match(dishEdit, /库存数量（必填）/)
+  assert.match(dishEdit, /单价（必填）/)
+  assert.match(dishEditLogic, /priceCents/)
+  assert.match(menuSource, /PRESET_DISH_VERSION = '1\.2\.2-5'/)
 })
