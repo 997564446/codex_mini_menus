@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { hashSecret, safeEqual } = require('../cloudfunctions/identity/domain')
-const { normalizeDishSettings, normalizeDishSelection, normalizeCategoryChanges, assertWeeklyMenu, assertMealType, assertMealDishCategories, normalizeCategoryOrder } = require('../cloudfunctions/menu/domain')
+const { normalizeDishSettings, normalizeDishSelection, normalizeCategoryChanges, assertWeeklyMenu, assertMealType, normalizeSyncWeekdays, assertMealDishCategories, normalizeCategoryOrder } = require('../cloudfunctions/menu/domain')
 const presetDishes = require('../cloudfunctions/menu/preset-dishes')
 const { assertOrderWindow, assertTransition, assertStapleSelection, validateSelectedSpecs, normalizeItems, inventoryDeltas } = require('../cloudfunctions/order/domain')
 const { mealAvailability } = require('../miniprogram/utils/format')
@@ -67,6 +67,14 @@ test('星期菜单只接受早中晚三种餐别', () => {
   assert.throws(() => assertMealType('night'), /早餐、中餐或晚餐/)
 })
 
+test('菜单同步只接受不重复且不含来源日的目标星期', () => {
+  assert.deepEqual(normalizeSyncWeekdays([5, 2, 3], 1), [2, 3, 5])
+  assert.throws(() => normalizeSyncWeekdays([], 1), /至少选择一个/)
+  assert.throws(() => normalizeSyncWeekdays([1, 2], 1), /目标星期不正确/)
+  assert.throws(() => normalizeSyncWeekdays([2, 2], 1), /目标星期不正确/)
+  assert.throws(() => normalizeSyncWeekdays([8], 1), /目标星期不正确/)
+})
+
 test('分类拖动顺序拒绝重复和无效分类', () => {
   assert.deepEqual(normalizeCategoryOrder(['c2', 'c1']), ['c2', 'c1'])
   assert.throws(() => normalizeCategoryOrder(['c1', 'c1']), /重复分类/)
@@ -74,8 +82,9 @@ test('分类拖动顺序拒绝重复和无效分类', () => {
 })
 
 test('每餐菜单必须提供主食且不能包含未分类菜品', () => {
-  assert.doesNotThrow(() => assertMealDishCategories([{ enabled: true, categoryId: 'staple' }], 'uncat', 'staple'))
+  assert.doesNotThrow(() => assertMealDishCategories([{ enabled: true, categoryId: 'staple', systemDishType: 'no_staple' }], 'uncat', 'staple'))
   assert.throws(() => assertMealDishCategories([{ enabled: true, categoryId: 'dish' }], 'uncat', 'staple'), /至少选择一种主食/)
+  assert.throws(() => assertMealDishCategories([{ enabled: true, categoryId: 'staple' }], 'uncat', 'staple'), /必须包含“不要主食”/)
   assert.throws(() => assertMealDishCategories([{ enabled: true, categoryId: 'uncat' }], 'uncat', 'staple'), /不可用菜品/)
 })
 

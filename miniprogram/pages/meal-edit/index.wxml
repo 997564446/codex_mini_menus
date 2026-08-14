@@ -5,6 +5,21 @@
     <view class="meal-picker-value"><text>当前餐别</text><text class="meal-picker-label">{{mealTypeLabel}}⌄</text></view>
   </picker>
 
+  <view wx:if="{{!loading}}" class="sync-entry card">
+    <view class="sync-entry-copy"><text class="sync-entry-title">同步{{mealTypeLabel}}菜单</text><text class="sync-entry-tip">把{{weekdayLabel}}{{mealTypeLabel}}复制到你选择的其他天</text></view>
+    <button class="sync-entry-btn" disabled="{{saving || syncing}}" bindtap="openSyncPanel">选择星期</button>
+  </view>
+
+  <view wx:if="{{syncPanelVisible}}" class="sync-panel card">
+    <view class="sync-panel-head"><view><text class="sync-panel-title">同步到哪些天？</text><text class="sync-panel-tip">将覆盖所选日期原有的{{mealTypeLabel}}菜单</text></view><text class="sync-all" bindtap="toggleSyncAll">{{syncAllSelected ? '清空' : '全选'}}</text></view>
+    <checkbox-group class="sync-weekdays" bindchange="onSyncWeekdays">
+      <label wx:for="{{syncWeekdayOptions}}" wx:key="value" class="sync-weekday {{item.checked ? 'selected' : ''}}">
+        <checkbox value="{{item.value}}" checked="{{item.checked}}" color="#55a66f" />{{item.label}}
+      </label>
+    </checkbox-group>
+    <view class="sync-actions"><button class="sync-cancel" disabled="{{syncing}}" bindtap="closeSyncPanel">取消</button><button class="sync-confirm" loading="{{syncing}}" disabled="{{syncing || !syncTargetWeekdays.length}}" bindtap="syncCurrentMeal">确认同步</button></view>
+  </view>
+
   <view wx:if="{{loading}}" class="card empty-state"><text class="empty-copy">正在整理星期菜单…</text></view>
   <view wx:elif="{{!dishes.length}}" class="card empty-state"><text class="empty-emoji">🥕</text><text class="empty-title">菜品库还没准备好</text><text class="empty-copy">请返回菜品库下拉刷新。</text></view>
   <view wx:else class="menu-layout card">
@@ -23,9 +38,9 @@
       <scroll-view class="dish-list" scroll-y enhanced show-scrollbar="{{false}}">
         <view wx:if="{{!categoryDishes.length}}" class="category-empty">这个分类还没有菜品</view>
         <checkbox-group wx:else bindchange="onDishes">
-          <label wx:for="{{categoryDishes}}" wx:key="_id" class="dish-choice {{item.checked ? 'checked' : ''}}">
-            <view class="dish-body"><text class="dish-name">{{item.name}}</text><text class="dish-copy">{{item.stockText}}</text></view>
-            <checkbox value="{{item._id}}" checked="{{item.checked}}" color="#55a66f" />
+          <label wx:for="{{categoryDishes}}" wx:key="_id" class="dish-choice {{item.checked ? 'checked' : ''}} {{item.isRequiredDish ? 'required-dish' : ''}}">
+            <view class="dish-body"><text class="dish-name">{{item.name}}</text><text class="dish-copy">{{item.isRequiredDish ? '每餐默认勾选，不可取消' : item.stockText}}</text></view>
+            <checkbox value="{{item._id}}" checked="{{item.checked}}" disabled="{{item.isRequiredDish}}" color="#55a66f" />
           </label>
         </checkbox-group>
       </scroll-view>

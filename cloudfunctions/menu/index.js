@@ -8,6 +8,7 @@ const {
   normalizeCategoryOrder,
   assertWeeklyMenu,
   assertMealType,
+  normalizeSyncWeekdays,
   assertMealDishCategories
 } = require('./domain')
 const PRESET_DISHES = require('./preset-dishes')
@@ -262,6 +263,15 @@ async function ensureWeeklyMenus(familyId) {
     })
   }
   const activeMenus = existingResult.data.filter(menu => MEAL_TYPES[menu.mealType])
+  for (const menu of activeMenus.filter(item => !(item.dishIds || []).includes(noStapleDish._id))) {
+    await db.collection('meal_menus').doc(menu._id).update({
+      data: {
+        dishIds: [noStapleDish._id, ...(menu.dishIds || [])],
+        version: _.inc(1),
+        updatedAt: db.serverDate()
+      }
+    })
+  }
   const existingMap = new Map(activeMenus.map(menu => [`${Number(menu.weekday)}|${menu.mealType}`, menu]))
   const familyKey = crypto.createHash('sha256').update(familyId).digest('hex').slice(0, 20)
   for (let weekday = 1; weekday <= 7; weekday += 1) {
@@ -615,6 +625,59 @@ async function saveMeal(openid, payload) {
 }
 
 /**
+ * 将一份已保存的星期餐别菜单同步覆盖到厨师选择的其他星期。
+ * @param {string} openid 厨师微信标识
+ * @param {object} payload 来源菜单、版本、目标星期和目标版本
+ * @returns {Promise<object>} 已同步的目标菜单及新版本
+ */
+async function syncMeals(openid, payload) {
+  const chef = await requireUser(openid, 'chef')
+  const menus = await ensureWeeklyMenus(chef.familyId)
+  const sourceMealMenuId = cleanText(payload.sourceMealMenuId, 80)
+  const source = menus.find(menu => menu._id === sourceMealMenuId)
+  if (!source) throw Object.assign(new Error('来源菜单不存在'), { code: 'NOT_FOUND' })
+  const sourceWeekday = Number(source.weekday)
+  const targetWeekdays = normalizeSyncWeekdays(payload.targetWeekdays, sourceWeekday)
+  const targetVersions = payload.targetVersions && typeof payload.targetVersions === 'object' ? payload.targetVersions : {}
+  const targets = targetWeekdays.map(weekday => menus.find(menu => Number(menu.weekday) === weekday && menu.mealType === source.mealType))
+  if (targets.some(target => !target)) throw Object.assign(new Error('目标菜单不存在'), { code: 'NOT_FOUND' })
+  if (targets.some(target => Number(targetVersions[target._id]) !== Number(target.version))) {
+    throw Object.assign(new Error('目标菜单已被修改，请刷新后重试'), { code: 'CONFLICT' })
+  }
+  const dishes = await getDishesByIds(chef.familyId, source.dishIds || [])
+  const [defaultCategory, stapleCategory] = await Promise.all([
+    ensureDefaultCategory(chef.familyId),
+    ensureStapleCategory(chef.familyId)
+  ])
+  if (dishes.length !== (source.dishIds || []).length) throw Object.assign(new Error('来源菜单包含不可用菜品'), { code: 'INVALID_INPUT' })
+  assertMealDishCategories(dishes, defaultCategory._id, stapleCategory._id)
+  const transaction = await db.startTransaction()
+  try {
+    const currentSource = (await transaction.collection('meal_menus').doc(source._id).get()).data
+    if (!currentSource || Number(currentSource.version) !== Number(payload.sourceVersion)) {
+      throw Object.assign(new Error('来源菜单已被修改，请刷新后重试'), { code: 'CONFLICT' })
+    }
+    const now = db.serverDate()
+    const updatedMenus = []
+    for (const target of targets) {
+      const updated = await transaction.collection('meal_menus').where({
+        _id: target._id,
+        familyId: chef.familyId,
+        weekly: true,
+        version: target.version
+      }).update({ data: { dishIds: source.dishIds || [], version: _.inc(1), updatedAt: now } })
+      if (!updated.stats.updated) throw Object.assign(new Error('目标菜单已被修改，请刷新后重试'), { code: 'CONFLICT' })
+      updatedMenus.push({ _id: target._id, weekday: target.weekday, version: target.version + 1 })
+    }
+    await transaction.commit()
+    return { sourceMealMenuId: source._id, mealType: source.mealType, dishIds: source.dishIds || [], updatedMenus }
+  } catch (error) {
+    await transaction.rollback().catch(() => {})
+    throw error
+  }
+}
+
+/**
  * 返回食客在具体日期可查看的星期菜单。
  * @param {string} openid 食客微信标识
  * @param {object} payload 具体日期
@@ -692,6 +755,7 @@ exports.main = async (event = {}, context = {}) => {
       case 'deleteDish': data = await deleteDish(openid, payload); break
       case 'chefMeals': data = await chefMeals(openid, payload); break
       case 'saveMeal': data = await saveMeal(openid, payload); break
+      case 'syncMeals': data = await syncMeals(openid, payload); break
       case 'openMeals': data = await openMeals(openid, payload); break
       case 'mealDetail': data = await mealDetail(openid, payload); break
       default: throw Object.assign(new Error('未知菜单接口'), { code: 'NOT_FOUND' })

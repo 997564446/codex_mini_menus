@@ -82,6 +82,25 @@ function assertMealType(mealType) {
 }
 
 /**
+ * 校验菜单同步的目标星期，目标不能重复或包含来源星期。
+ * @param {Array<number>} targetWeekdays 目标星期序号
+ * @param {number} sourceWeekday 来源星期序号
+ * @returns {Array<number>} 排序后的目标星期
+ */
+function normalizeSyncWeekdays(targetWeekdays, sourceWeekday) {
+  assertWeeklyMenu(sourceWeekday)
+  if (!Array.isArray(targetWeekdays) || !targetWeekdays.length || targetWeekdays.length > 6) {
+    throw Object.assign(new Error('请至少选择一个要同步的星期'), { code: 'INVALID_INPUT' })
+  }
+  const normalized = targetWeekdays.map(Number)
+  if (normalized.some(weekday => !WEEKDAY_LABELS[weekday] || weekday === sourceWeekday)
+    || new Set(normalized).size !== normalized.length) {
+    throw Object.assign(new Error('同步的目标星期不正确'), { code: 'INVALID_INPUT' })
+  }
+  return normalized.sort((left, right) => left - right)
+}
+
+/**
  * 校验厨师提交的自定义分类顺序。
  * @param {Array<string>} categoryIds 分类标识
  * @returns {Array<string>} 去重后的分类顺序
@@ -98,7 +117,7 @@ function normalizeCategoryOrder(categoryIds) {
 }
 
 /**
- * 校验每餐菜单不能包含未分类菜品且至少有一种主食。
+ * 校验每餐菜单不能包含未分类菜品，且必须包含系统“不要主食”。
  * @param {Array<object>} dishes 菜单菜品
  * @param {string} uncategorizedId 未分类标识
  * @param {string} stapleCategoryId 主食分类标识
@@ -110,6 +129,9 @@ function assertMealDishCategories(dishes, uncategorizedId, stapleCategoryId) {
   if (!(dishes || []).some(dish => dish.categoryId === stapleCategoryId)) {
     throw Object.assign(new Error('每餐菜单至少选择一种主食'), { code: 'INVALID_INPUT' })
   }
+  if (!(dishes || []).some(dish => dish.systemDishType === 'no_staple' && dish.categoryId === stapleCategoryId)) {
+    throw Object.assign(new Error('每餐菜单必须包含“不要主食”'), { code: 'INVALID_INPUT' })
+  }
 }
 
 module.exports = {
@@ -120,6 +142,7 @@ module.exports = {
   normalizeCategoryChanges,
   assertWeeklyMenu,
   assertMealType,
+  normalizeSyncWeekdays,
   assertMealDishCategories,
   normalizeCategoryOrder
 }

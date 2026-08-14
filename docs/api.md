@@ -41,7 +41,8 @@
 | `saveDish` | 可选 `dishId`、名称、分类、库存、单价（整数分）、版本号 | 厨师 | 在未分类新增菜品或修改已有菜品；新增时名称、库存和单价必填 |
 | `deleteDish` | `dishId`、版本号 | 厨师 | 删除未分类中的菜品 |
 | `chefMeals` | 无 | 厨师 | 查询周一至周日的早中晚固定菜单 |
-| `saveMeal` | `mealMenuId`、菜品和版本号 | 厨师 | 保存指定星期与餐别菜单 |
+| `saveMeal` | `mealMenuId`、菜品和版本号 | 厨师 | 保存指定星期与餐别菜单，必须包含系统菜品“不要主食” |
+| `syncMeals` | `sourceMealMenuId`、`sourceVersion`、`targetWeekdays`、`targetVersions` | 厨师 | 将已保存的来源菜单同步覆盖到所选星期的相同餐别 |
 | `openMeals` | 具体日期 | 活跃食客 | 查询日期对应的早中晚菜单 |
 | `mealDetail` | `mealMenuId`、食客需传日期 | 家庭成员 | 星期餐别菜单详情 |
 
